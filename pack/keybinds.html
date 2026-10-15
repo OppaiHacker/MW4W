@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <script>/* preloaded popup: paint nothing until mw4w.js has hidden the window */ (window.__ZEBAR_STATE ?? JSON.parse(sessionStorage.getItem('ZEBAR_STATE') ?? '{}')).openOptions?.preset === 'preload' && document.documentElement.classList.add('preload');</script>
+    <link rel="stylesheet" href="colors.css" />
+    <link rel="stylesheet" href="lib/base.css" />
+    <style>
+      body {
+        padding: 10px;
+      }
+      .panel {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        padding: 16px;
+        gap: 12px;
+      }
+      header {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+      }
+      header h1 {
+        font-size: 16px;
+        white-space: nowrap;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+      header .ic {
+        color: var(--primary);
+        font-size: 18px;
+      }
+      #list {
+        flex: 1;
+        overflow-y: auto;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0 24px;
+        align-items: start;
+        padding-right: 4px;
+      }
+      h2 {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--primary);
+        margin: 4px 0 6px;
+      }
+      .group {
+        margin-bottom: 14px;
+      }
+      .kb {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 5px 8px;
+        border-radius: 8px;
+        align-items: center;
+      }
+      .kb:nth-child(even) {
+        background: rgba(var(--surface2-rgb), 0.7);
+      }
+      .kb .keys {
+        display: flex;
+        gap: 3px;
+        flex: none;
+      }
+      .kb .d {
+        color: var(--text);
+        font-weight: 500;
+      }
+      .native {
+        color: var(--textDim);
+        font-size: 10px;
+        margin-left: 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="panel">
+      <header>
+        <h1><i class="ic">&#xE765;</i> Keybindings</h1>
+        <input id="q" type="search" placeholder="Filter…" autofocus />
+      </header>
+      <div id="list"></div>
+    </div>
+    <script type="module">
+      import { json, popup, esc } from './lib/mw4w.js';
+
+      popup();
+      const names = { lwin: 'SUPER', rwin: 'SUPER', control: 'CTRL', alt: 'ALT', shift: 'SHIFT', enter: 'Enter', print_screen: 'Print', oem_period: '.', oem_tilde: '`', tab: 'Tab', space: 'Space', left: '←', right: '→', up: '↑', down: '↓' };
+      const pretty = k => k.split('+').map(p => `<kbd>${esc(names[p] ?? p.toUpperCase())}</kbd>`).join('');
+
+      // Rows without desc continue the previous one (e.g. SUPER+1..0) - show just the first.
+      const binds = (await json('keybinds.json', [])).filter(b => b.desc);
+      const q = document.getElementById('q');
+
+      function render() {
+        const t = q.value.toLowerCase();
+        const groups = {};
+        for (const b of binds) {
+          if (t && !(b.desc + ' ' + b.keys.join(' ')).toLowerCase().includes(t)) continue;
+          (groups[b.group] ??= []).push(b);
+        }
+        document.getElementById('list').innerHTML = Object.entries(groups)
+          .map(
+            ([g, bs]) =>
+              `<div class="group"><h2>${esc(g)}</h2>` +
+              bs
+                .map(
+                  b =>
+                    `<div class="kb"><span class="d">${esc(b.desc)}${b.native ? '<span class="native">windows</span>' : ''}</span><span class="keys">${b.keys.map(pretty).join(' / ')}</span></div>`,
+                )
+                .join('') +
+              '</div>',
+          )
+          .join('');
+      }
+      q.addEventListener('input', render);
+      render();
+    </script>
+  </body>
+</html>

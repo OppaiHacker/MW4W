@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <script>/* preloaded popup: paint nothing until mw4w.js has hidden the window */ (window.__ZEBAR_STATE ?? JSON.parse(sessionStorage.getItem('ZEBAR_STATE') ?? '{}')).openOptions?.preset === 'preload' && document.documentElement.classList.add('preload');</script>
+    <link rel="stylesheet" href="colors.css" />
+    <link rel="stylesheet" href="lib/base.css" />
+    <style>
+      body {
+        display: grid;
+        place-items: center;
+        background: rgba(var(--surface-rgb), 0.72);
+        animation: fade 0.2s ease-out;
+      }
+      @keyframes fade {
+        from {
+          opacity: 0;
+        }
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(3, 200px);
+        gap: 18px;
+        animation: pop 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+      }
+      button {
+        height: 190px;
+        border-radius: 22px;
+        background: rgba(var(--surface2-rgb), 0.95);
+        border: 2px solid rgba(var(--outline-rgb), 0.5);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        transition:
+          transform 0.15s,
+          background 0.15s,
+          border-color 0.15s;
+      }
+      button .ic {
+        font-size: 54px;
+        color: var(--primary);
+      }
+      button span {
+        font-size: 15px;
+      }
+      button kbd {
+        opacity: 0.7;
+      }
+      button:hover,
+      button:focus-visible {
+        outline: none;
+        transform: translateY(-3px);
+        background: rgba(var(--primary-rgb), 0.22);
+        border-color: var(--primary);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="grid" id="grid"></div>
+    <script type="module">
+      import { send, glaze, popup, ic } from './lib/mw4w.js';
+
+      const close = popup({ blur: false });
+      // GlazeWM starts these at once; only suspend needs mw4w.ps1 (SetSuspendState)
+      const actions = [
+        ['lock', 'E72E', 'Lock', 'l', 'rundll32 user32.dll,LockWorkStation'],
+        ['logout', 'F3B1', 'Logout', 'e', 'shutdown /l'],
+        ['sleep', 'E708', 'Suspend', 'u'],
+        ['hibernate', 'E823', 'Hibernate', 'h', 'shutdown /h'],
+        ['reboot', 'E777', 'Reboot', 'r', 'shutdown /r /t 0'],
+        ['shutdown', 'E7E8', 'Shutdown', 's', 'shutdown /s /t 0'],
+      ];
+      document.getElementById('grid').innerHTML = actions
+        .map(([a, i, label, key]) => `<button data-a="${a}">${ic(i)}<span>${label}</span><kbd>${key}</kbd></button>`)
+        .join('');
+
+      const run = a => {
+        close();
+        const cmd = actions.find(x => x[0] === a)[4];
+        cmd ? glaze(`shell-exec --hide-window ${cmd}`) : send('power', a);
+      };
+      document.addEventListener('click', e => {
+        const b = e.target.closest('button');
+        if (b) run(b.dataset.a);
+        else close(); // click outside = cancel, like wlogout
+      });
+      addEventListener('keydown', e => {
+        const hit = actions.find(x => x[3] === e.key.toLowerCase());
+        if (hit) run(hit[0]);
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="colors.css" />
+    <link rel="stylesheet" href="lib/base.css" />
+    <style>
+      /* ml4w-dock (Quickshell, ML4W OS) defaults: iconSize 32, spacing 8, marginBottom 16,
+         pill radius 16 / padding 12, 2px primary->onPrimary border, opacity 0.7 */
+      :root {
+        --ease: cubic-bezier(0.22, 1, 0.36, 1); /* Easing.OutQuint */
+      }
+      body {
+        display: flex;
+        justify-content: center;
+        align-items: flex-end;
+        padding-bottom: 16px;
+        overflow: hidden;
+      }
+      .pill {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 66px;
+        padding: 0 12px;
+        isolation: isolate;
+        animation: reveal 350ms var(--ease);
+      }
+      .pill[hidden] {
+        display: none;
+      }
+      @keyframes reveal {
+        from {
+          transform: translateY(90px);
+        }
+      }
+      /* background only is translucent, icons stay opaque */
+      .pill::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        z-index: -1;
+        border-radius: 16px;
+        border: 2px solid transparent;
+        background:
+          linear-gradient(var(--surface), var(--surface)) padding-box,
+          linear-gradient(var(--primary), var(--onPrimary)) border-box;
+        box-shadow: 0 0 15px rgba(0, 0, 0, 0.4);
+        opacity: 0.7;
+      }
+      button {
+        position: relative;
+        width: 48px;
+        height: 50px;
+        display: grid;
+        place-items: center;
+      }
+      /* hover: primary circle behind the icon, icon grows 12% */
+      button::before {
+        content: '';
+        position: absolute;
+        width: 46px;
+        height: 46px;
+        border-radius: 50%;
+        background: var(--primary);
+        opacity: 0;
+        transition: opacity 300ms var(--ease);
+      }
+      button:hover::before {
+        opacity: 0.25;
+      }
+      button > :first-child {
+        position: relative;
+        transition: transform 300ms var(--ease);
+      }
+      button:hover > :first-child {
+        transform: scale(1.12);
+      }
+      img,
+      .av {
+        width: 32px;
+        height: 32px;
+        display: block;
+      }
+      .av {
+        border-radius: 8px;
+        background: var(--primary);
+        color: var(--onPrimary);
+        font: 600 16px/32px 'Segoe UI', sans-serif;
+        text-align: center;
+      }
+      /* running indicator, stretches for the focused app */
+      .ind {
+        position: absolute;
+        bottom: 0;
+        left: 50%;
+        width: 4px;
+        height: 4px;
+        border-radius: 2px;
+        background: var(--primary);
+        transform: translateX(-50%);
+        transition: width 350ms var(--ease);
+      }
+      .active .ind {
+        width: 14px;
+      }
+      /* launcher: 3x3 dots */
+      .dots {
+        display: grid;
+        grid-template-columns: repeat(3, 5px);
+        gap: 6px;
+      }
+      .dots i {
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: var(--primary);
+      }
+      .sep {
+        width: 1px;
+        height: 24px;
+        margin-bottom: 4px;
+        background: var(--primary);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="pill" id="dock" hidden>
+      <button data-act="launcher" title="Apps"><span class="dots"></span></button>
+      <div class="sep"></div>
+      <div id="apps" style="display: contents"></div>
+    </div>
+    <script type="module">
+      import { zebar, widget, send, openPopup, settings, watchState, esc } from './lib/mw4w.js';
+
+      if (!(await settings()).dock) widget.close();
+
+      const providers = zebar.createProviderGroup({ glazewm: { type: 'glazewm' } });
+      const glaze = (cmd, id) => providers.outputMap.glazewm?.runCommand(cmd, id);
+      const dock = document.getElementById('dock');
+      const apps = document.getElementById('apps');
+      document.querySelector('.dots').innerHTML = '<i></i>'.repeat(9);
+
+      watchState((st, changed) => {
+        if (changed) return location.reload();
+        // game mode / bar hidden: GlazeWM drops the bottom gap, so get out of the way
+        dock.hidden = st.gamemode || st.barHidden;
+      });
+
+      // Icons: cache/icons/proc-<name>.png (64px), made on demand by `mw4w.ps1 winicons`.
+      let iconVer = 0;
+      let iconAsked = 0;
+      window.noIcon = img => {
+        img.outerHTML = `<div class="av">${esc(img.alt[0]?.toUpperCase() ?? '?')}</div>`;
+        if (Date.now() - iconAsked < 20000) return; // ponytail: one refresh per 20s, enough for new apps
+        iconAsked = Date.now();
+        send('winicons');
+        setTimeout(() => (iconVer++, render()), 5000);
+      };
+
+      // One button per app (process), like mw4w-dock groups windows by app.
+      let groups = new Map();
+      let html;
+      function render() {
+        const g = providers.outputMap.glazewm;
+        if (!g) return;
+        groups = new Map();
+        for (const w of g.allWindows ?? []) {
+          const k = w.processName.toLowerCase();
+          if (!groups.has(k)) groups.set(k, []);
+          groups.get(k).push(w);
+        }
+        const next = [...groups]
+          .map(([k, ws]) => {
+            const title = ws.length > 1 ? `${ws[0].processName} (${ws.length})` : ws[0].title;
+            return (
+              `<button class="${ws.some(w => w.hasFocus) ? 'active' : ''}" data-app="${esc(k)}" title="${esc(title)}">` +
+              `<img src="cache/icons/proc-${esc(k)}.png?v=${iconVer}" alt="${esc(ws[0].processName)}" onerror="noIcon(this)" />` +
+              `<span class="ind"></span></button>`
+            );
+          })
+          .join('');
+        if (next !== html) apps.innerHTML = html = next;
+      }
+      providers.onOutput(render);
+      render();
+
+      const appOf = e => groups.get(e.target.closest('[data-app]')?.dataset.app);
+
+      document.addEventListener('click', e => {
+        if (e.target.closest('[data-act="launcher"]')) return openPopup('launcher');
+        const ws = appOf(e);
+        if (!ws) return;
+        // click cycles through the app's windows
+        const i = ws.findIndex(w => w.hasFocus);
+        glaze(`focus --container-id ${ws[(i + 1) % ws.length].id}`);
+      });
+
+      // middle click closes the app's focused (or first) window
+      document.addEventListener('auxclick', e => {
+        const ws = e.button === 1 && appOf(e);
+        if (ws) glaze('close', (ws.find(w => w.hasFocus) ?? ws[0]).id);
+      });
+      document.addEventListener('contextmenu', e => e.preventDefault());
+    </script>
+  </body>
+</html>

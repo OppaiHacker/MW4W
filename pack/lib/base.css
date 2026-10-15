@@ -1,0 +1,102 @@
+/* MW4W base theme. Colors come from ../colors.css (generated from the wallpaper). */
+:root {
+  --radius: 14px;
+  --font: 'Segoe UI Variable Text', 'Segoe UI', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  color: var(--text);
+  font: 600 13px/1.2 var(--font);
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.ic {
+  font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets';
+  font-style: normal;
+  font-weight: normal;
+  font-size: 14px;
+  line-height: 1;
+  display: inline-block;
+}
+
+/* Floating panel used by every popup (rofi / wlogout / waypaper look). */
+.panel {
+  background: rgba(var(--surface-rgb), 0.94);
+  border: 2px solid rgba(var(--primary-rgb), 0.6);
+  border-radius: calc(var(--radius) + 4px);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
+  animation: pop 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+}
+
+input[type='text'],
+input[type='search'],
+input[type='number'],
+select {
+  width: 100%;
+  background: rgba(var(--surface2-rgb), 1);
+  border: 1px solid rgba(var(--outline-rgb), 0.6);
+  border-radius: 10px;
+  padding: 9px 12px;
+  outline: none;
+}
+
+input:focus,
+select:focus {
+  border-color: var(--primary);
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(var(--outline-rgb), 0.8);
+  border-radius: 3px;
+}
+
+kbd {
+  display: inline-block;
+  min-width: 22px;
+  padding: 3px 7px;
+  border-radius: 6px;
+  background: rgba(var(--surface3-rgb), 1);
+  border-bottom: 2px solid rgba(var(--outline-rgb), 0.8);
+  font: 600 11px var(--font);
+  text-align: center;
+}
+
+/* preloaded popup until hidden (mw4w.js popup()) */
+.preload {
+  visibility: hidden;
+}

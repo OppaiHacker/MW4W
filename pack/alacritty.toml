@@ -1,0 +1,22 @@
+# ML4W-style Alacritty (install.ps1 copies it to %APPDATA%\alacritty if missing).
+# colors.toml is regenerated from the wallpaper by mw4w.ps1 (matugen/wallust in ML4W).
+[general]
+import = ["colors.toml"]
+live_config_reload = true
+
+[window]
+decorations = "None"
+padding = { x = 15, y = 15 }
+dynamic_padding = true
+opacity = 0.85
+blur = true
+
+[font]
+normal = { family = "JetBrainsMono NF" }
+size = 11
+
+[cursor]
+style = { shape = "Beam", blinking = "On" }
+
+[selection]
+save_to_clipboard = true

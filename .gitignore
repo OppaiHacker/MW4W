@@ -1,0 +1,5 @@
+graphify-out/
+pack/cache/
+pack/colors.css
+pack/settings.json
+*.bak-*

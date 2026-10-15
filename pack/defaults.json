@@ -1,0 +1,25 @@
+{
+  "apps": {
+    "terminal": "wt",
+    "browser": "msedge",
+    "files": "explorer",
+    "calculator": "calc"
+  },
+  "wallpaperDir": "%USERPROFILE%\\Pictures\\Wallpapers",
+  "dynamicColors": true,
+  "accent": "#8ab4f8",
+  "gapsIn": 10,
+  "gapsOut": 14,
+  "border": true,
+  "corners": "rounded",
+  "hideTitleBars": false,
+  "inactiveOpacity": 100,
+  "focusFollowsMouse": true,
+  "animations": true,
+  "hideTaskbar": true,
+  "clock24h": true,
+  "showMedia": false,
+  "showTray": true,
+  "dock": true,
+  "wallpaperAutoMinutes": 15
+}

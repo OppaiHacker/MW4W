@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="colors.css" />
+    <link rel="stylesheet" href="lib/base.css" />
+    <style>
+      /* waybar theme "ml4w-modern" (ML4W 2.x default) */
+      body {
+        padding: 6px 8px 0;
+        font: 600 14px/1 'Segoe UI Variable Text', 'Segoe UI', sans-serif;
+        color: var(--text);
+      }
+      .bar {
+        display: grid;
+        /* sides never shrink below their modules; the title gets what is left (ellipsis)
+           and stays centered while both sides fit in half the bar */
+        grid-template-columns: minmax(max-content, 1fr) minmax(0, auto) minmax(max-content, 1fr);
+        align-items: center;
+        gap: 12px;
+        height: 34px;
+      }
+      .side {
+        display: flex;
+        align-items: center;
+        min-width: 0;
+        height: 100%;
+      }
+      /* one cluster pinned to the right edge; if it doesn't fit, its left end is clipped (never the clock) */
+      .right {
+        flex-direction: row-reverse;
+        overflow: hidden;
+      }
+      .cluster {
+        display: flex;
+        align-items: center;
+        flex: none;
+      }
+      /* module box: #clock, #pulseaudio, #network, #battery, #custom-appmenu */
+      .m {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 30px;
+        padding: 0 10px;
+        margin-right: 10px;
+        border-radius: 8px;
+        background: var(--surface);
+        border: 2px solid var(--secondary);
+        white-space: nowrap;
+        cursor: pointer;
+        transition: all 0.3s ease-out;
+        flex: none;
+      }
+      .m:hover {
+        background: rgba(var(--primary-rgb), 0.3);
+        border-color: var(--primary);
+      }
+      .m:empty {
+        display: none;
+      }
+      .m .ic {
+        font-size: 14px;
+      }
+      .m.muted {
+        background: var(--onPrimary);
+      }
+      .m.warn {
+        background: var(--error);
+        color: var(--onPrimary);
+        border-color: var(--error);
+      }
+      /* plain icon modules: #custom-tools, #custom-exit, #custom-notification ... */
+      .i {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-right: 15px;
+        font-size: 17px;
+        cursor: pointer;
+        flex: none;
+      }
+      .i:hover,
+      .kid:hover {
+        color: var(--primary);
+      }
+      /* waybar drawer group: hover reveals the children */
+      .drawer {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-right: 15px;
+        flex: none;
+      }
+      .drawer .i {
+        margin-right: 0;
+      }
+      .drawer .kids {
+        display: flex;
+        gap: 12px;
+        max-width: 0;
+        overflow: hidden;
+        opacity: 0;
+        transition: all 0.3s ease-out;
+      }
+      .drawer:hover .kids {
+        max-width: 800px;
+        opacity: 1;
+      }
+      .kid {
+        font-size: 14px;
+        white-space: nowrap;
+        cursor: pointer;
+      }
+      .kid .ic {
+        font-size: 15px;
+      }
+      /* hyprland/workspaces */
+      .ws {
+        display: flex;
+        min-width: 210px;
+        margin-right: 7px;
+        flex: none;
+      }
+      .ws button {
+        height: 24px;
+        min-width: 24px;
+        padding: 0 6px;
+        margin: 0 3px;
+        border-radius: 8px;
+        color: var(--text);
+        background: var(--surface);
+        border: 2px solid var(--primary);
+        font-size: 13px;
+        transition: all 0.3s ease-in-out;
+      }
+      .ws button.focus {
+        color: var(--onPrimary);
+        background: var(--primary);
+        border-radius: 12px;
+        min-width: 30px;
+      }
+      .ws button.shown:not(.focus) {
+        background: rgba(var(--primary-rgb), 0.3);
+      }
+      .ws button:hover {
+        background: rgba(var(--primary-rgb), 0.3);
+        border-radius: 15px;
+      }
+      /* hyprland/window */
+      .title {
+        max-width: 30vw;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 14px;
+        font-weight: 400;
+        padding: 0 10px;
+      }
+      /* tray (a drawer here: Windows trays are much fuller than Linux ones) */
+      .tray {
+        align-items: center;
+        gap: 10px;
+      }
+      .drawer:has(.tray:empty) {
+        display: none;
+      }
+      .tray img {
+        width: 18px;
+        height: 18px;
+        display: block;
+        cursor: pointer;
+      }
+      .song {
+        max-width: 200px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .logo {
+        width: 18px;
+        height: 18px;
+        border-radius: 5px;
+        background: var(--primary);
+        color: var(--onPrimary);
+        font-size: 11px;
+        display: grid;
+        place-items: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="bar">
+      <div class="side">
+        <div class="m" data-act="launcher" title="Left: Open the application launcher&#10;Right: Show all keybindings">Apps</div>
+        <div class="ws" id="ws"></div>
+      </div>
+      <div class="title" id="title"></div>
+      <div class="side right"><div class="cluster">
+        <div class="m" id="tags"></div>
+        <div class="m" id="media"></div>
+        <div class="m" id="vol" data-act="volume"></div>
+        <div class="m" id="net" data-act="network"></div>
+        <div class="m" id="bat" data-act="battery"></div>
+        <div class="drawer">
+          <div class="kids" id="hw"></div>
+          <i class="i ic" data-act="taskmgr" title="System">&#xE950;</i>
+        </div>
+        <div class="drawer">
+          <div class="kids">
+            <span class="kid" data-act="wallpaper" title="Wallpaper (SUPER+CTRL+W)"><i class="ic">&#xE91B;</i></span>
+            <span class="kid" data-act="keybinds" title="Keybindings (SUPER+CTRL+K)"><i class="ic">&#xE765;</i></span>
+            <span class="kid" data-act="gamemode" title="Game mode (SUPER+ALT+G)"><i class="ic">&#xE7FC;</i></span>
+            <span class="kid" data-act="animations" title="Toggle animations (SUPER+SHIFT+A)"><i class="ic">&#xE945;</i></span>
+          </div>
+          <i class="i ic" title="Tools">&#xE90F;</i>
+        </div>
+        <div class="drawer">
+          <div class="kids tray" id="tray"></div>
+          <i class="i ic" title="Tray">&#xE76B;</i>
+        </div>
+        <i class="i ic" data-act="notifications" title="Notifications">&#xEA8F;</i>
+        <i class="i ic" data-act="power" title="Open Power Menu">&#xE7E8;</i>
+        <span class="i" data-act="settings" title="MW4W Settings (SUPER+CTRL+S)"><span class="logo">MW</span></span>
+        <div class="m" id="clock" data-act="clock" style="margin-right: 0"></div>
+      </div></div>
+    </div>
+
+    <script type="module">
+      import { zebar, widget, send, open, openPopup as popup, settings, watchState, ic, esc } from './lib/mw4w.js';
+
+      const s = await settings();
+      document.body.style.paddingInline = `${s.gapsOut}px`;
+      let state = {};
+      let altClock = false;
+
+      watchState((st, changed) => {
+        if (st.barHidden) return widget.close();
+        if (changed) return location.reload();
+        state = st;
+      });
+
+      const providers = zebar.createProviderGroup({
+        glazewm: { type: 'glazewm' },
+        cpu: { type: 'cpu', refreshInterval: 3000 },
+        memory: { type: 'memory', refreshInterval: 3000 },
+        network: { type: 'network', refreshInterval: 5000 },
+        battery: { type: 'battery', refreshInterval: 15000 },
+        audio: { type: 'audio' },
+        date: { type: 'date', formatting: s.clock24h ? 'HH:mm EEE' : 'h:mm a EEE' },
+        dateLong: { type: 'date', formatting: 'EEEE, d MMMM yyyy', refreshInterval: 60000 },
+        ...(s.showMedia ? { media: { type: 'media' } } : {}),
+        ...(s.showTray ? { systray: { type: 'systray' } } : {}),
+      });
+
+      const set = (id, html) => {
+        const el = document.getElementById(id);
+        if (el._html !== html) el.innerHTML = el._html = html;
+      };
+
+      const wifiIcon = n => (n == null ? 'E701' : n >= 75 ? 'E701' : n >= 50 ? 'E874' : n >= 25 ? 'E873' : 'E872');
+      const volIcon = (v, m) => (m ? 'E74F' : v < 1 ? 'E992' : v < 34 ? 'E993' : v < 67 ? 'E994' : 'E995');
+
+      function render() {
+        const o = providers.outputMap;
+        const g = o.glazewm;
+
+        if (g) {
+          // persistent-workspaces: 1-5 always visible
+          const shown = [...g.currentWorkspaces];
+          for (const n of ['1', '2', '3', '4', '5'])
+            if (!g.allWorkspaces.some(w => w.name === n)) shown.push({ name: n, children: [] });
+          shown.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+          set(
+            'ws',
+            shown
+              .map(w => {
+                const cls = [w.hasFocus && 'focus', w.isDisplayed && 'shown'].filter(Boolean).join(' ');
+                return `<button class="${cls}" data-ws="${esc(w.name)}">${esc(w.displayName ?? w.name)}</button>`;
+              })
+              .join(''),
+          );
+
+          const f = g.focusedContainer;
+          // hyprland/window rewrite: drop the " - App" suffix
+          set('title', f?.type === 'window' ? esc(f.title.replace(/ [-—–] [^-—–]+$/, '') || f.processName) : '');
+        }
+
+        set('clock', esc(altClock ? o.dateLong?.formatted : o.date?.formatted));
+
+        let tags = '';
+        if (g) {
+          for (const m of g.bindingModes) tags += `<span data-act="mode" data-mode="${esc(m.name)}">${ic('E740')} ${esc(m.displayName ?? m.name)}</span>`;
+          if (g.isPaused) tags += `<span data-act="pause">${ic('E769')} paused</span>`;
+        }
+        if (state.gamemode) tags += `<span data-act="gamemode">${ic('E7FC')} game</span>`;
+        set('tags', tags);
+        document.getElementById('tags').classList.toggle('warn', !!tags);
+
+        const m = o.media?.currentSession;
+        set(
+          'media',
+          m && m.title
+            ? `<span data-act="prev">${ic('E892')}</span><span data-act="playpause">${ic(m.isPlaying ? 'E769' : 'E768')}</span>` +
+                `<span data-act="next">${ic('E893')}</span><span class="song">${esc(m.title)}${m.artist ? ' — ' + esc(m.artist) : ''}</span>`
+            : '',
+        );
+
+        const a = o.audio?.defaultPlaybackDevice;
+        set('vol', a ? `${ic(volIcon(a.volume, a.isMuted))} ${a.isMuted ? '' : Math.round(a.volume) + '%'}` : '');
+        const vol = document.getElementById('vol');
+        vol.classList.toggle('muted', !!a?.isMuted);
+        vol.title = a ? `${a.name} — scroll to change, right click: sound settings` : '';
+
+        const n = o.network;
+        if (n) {
+          const t = n.defaultInterface?.type;
+          const icon = t === 'wifi' ? wifiIcon(n.defaultGateway?.signalStrength) : t === 'ethernet' ? 'E839' : t ? 'E774' : 'F384';
+          const label = t === 'wifi' ? `${n.defaultGateway?.signalStrength ?? ''}%` : t ? n.defaultInterface?.friendlyName ?? '' : 'Disconnected ⚠';
+          set('net', `${ic(icon)} ${esc(label)}`);
+          document.getElementById('net').title = n.defaultGateway?.ssid ?? n.defaultInterface?.friendlyName ?? '';
+        }
+
+        const b = o.battery;
+        if (b && b.state !== 'unknown') {
+          const p = Math.round(b.chargePercent);
+          const icon = (b.isCharging ? 0xebab : 0xeba0) + Math.round(p / 10);
+          set('bat', `${ic(icon.toString(16))} ${p}%`);
+          document.getElementById('bat').classList.toggle('warn', p < 15 && !b.isCharging);
+        } else set('bat', '');
+
+        // group/hardware: "/ C x% / M y%"
+        set(
+          'hw',
+          (o.cpu ? `<span class="kid" data-act="taskmgr">C ${Math.round(o.cpu.usage)}%</span>` : '') +
+            (o.memory ? `<span class="kid" data-act="taskmgr">/ M ${Math.round(o.memory.usage)}%</span>` : ''),
+        );
+
+        set('tray', (o.systray?.icons ?? []).map(t => `<img src="${t.iconUrl}" title="${esc(t.tooltip)}" data-tray="${esc(t.id)}" />`).join(''));
+      }
+
+      providers.onOutput(render);
+      render();
+
+      const glaze = (cmd, id) => providers.outputMap.glazewm?.runCommand(cmd, id);
+
+      document.addEventListener('click', e => {
+        const el = e.target.closest('[data-act],[data-ws],[data-tray]');
+        if (!el) return;
+        if (el.dataset.ws) return glaze(`focus --workspace ${el.dataset.ws}`);
+        if (el.dataset.tray) return providers.outputMap.systray?.onLeftClick(el.dataset.tray);
+        const o = providers.outputMap;
+        switch (el.dataset.act) {
+          case 'launcher':
+          case 'wallpaper':
+          case 'keybinds':
+          case 'settings':
+          case 'power':
+            return popup(el.dataset.act);
+          case 'clock':
+            altClock = !altClock;
+            return render();
+          case 'mode':
+            return glaze(`wm-disable-binding-mode --name ${el.dataset.mode}`);
+          case 'pause':
+            return glaze('wm-toggle-pause');
+          case 'gamemode':
+            return send('gamemode');
+          case 'animations':
+            return send('toggle', 'animations');
+          case 'notifications':
+            return open('ms-actioncenter:');
+          case 'prev':
+            return o.media?.previous();
+          case 'next':
+            return o.media?.next();
+          case 'playpause':
+            return o.media?.togglePlayPause();
+          case 'taskmgr':
+            return glaze('shell-exec taskmgr');
+          case 'network':
+            return open('ms-settings:network');
+          case 'battery':
+            return open('ms-settings:batterysaver');
+          case 'volume': {
+            const d = o.audio?.defaultPlaybackDevice;
+            return d && o.audio.setMute(!d.isMuted);
+          }
+        }
+      });
+
+      document.addEventListener('contextmenu', e => {
+        e.preventDefault();
+        const el = e.target.closest('[data-tray],[data-act]');
+        if (el?.dataset.tray) providers.outputMap.systray?.onRightClick(el.dataset.tray);
+        else if (el?.dataset.act === 'volume') open('ms-settings:sound');
+        else if (el?.dataset.act === 'launcher') popup('keybinds');
+      });
+
+      document.addEventListener('auxclick', e => {
+        if (e.button !== 1) return;
+        const el = e.target.closest('[data-tray]');
+        if (el) providers.outputMap.systray.onMiddleClick(el.dataset.tray);
+      });
+
+      document.addEventListener(
+        'wheel',
+        e => {
+          const up = e.deltaY < 0;
+          if (e.target.closest('#ws')) return glaze(up ? 'focus --prev-active-workspace' : 'focus --next-active-workspace');
+          if (e.target.closest('#vol')) {
+            const o = providers.outputMap;
+            const d = o.audio?.defaultPlaybackDevice;
+            if (d) o.audio.setVolume(Math.max(0, Math.min(100, d.volume + (up ? 2 : -2))));
+          }
+        },
+        { passive: true },
+      );
+    </script>
+  </body>
+</html>

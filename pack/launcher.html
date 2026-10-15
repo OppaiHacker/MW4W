@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <script>/* preloaded popup: paint nothing until mw4w.js has hidden the window */ (window.__ZEBAR_STATE ?? JSON.parse(sessionStorage.getItem('ZEBAR_STATE') ?? '{}')).openOptions?.preset === 'preload' && document.documentElement.classList.add('preload');</script>
+    <link rel="stylesheet" href="colors.css" />
+    <link rel="stylesheet" href="lib/base.css" />
+    <style>
+      body {
+        padding: 10px;
+      }
+      .panel {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        padding: 14px;
+        gap: 12px;
+      }
+      .top {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+      .top .ic {
+        color: var(--primary);
+        font-size: 18px;
+        padding-left: 4px;
+      }
+      #q {
+        font-size: 15px;
+        padding: 11px 14px;
+      }
+      .modes {
+        display: flex;
+        gap: 6px;
+      }
+      .modes button {
+        padding: 6px 12px;
+        border-radius: 9px;
+        color: var(--textDim);
+        background: rgba(var(--surface2-rgb), 1);
+      }
+      .modes button.on {
+        background: var(--primary);
+        color: var(--onPrimary);
+      }
+      #list {
+        flex: 1;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 7px 10px;
+        border-radius: 10px;
+        cursor: pointer;
+        min-height: 44px;
+      }
+      .row.sel {
+        background: rgba(var(--primary-rgb), 0.22);
+        box-shadow: inset 3px 0 0 var(--primary);
+      }
+      .row img,
+      .row .av {
+        width: 30px;
+        height: 30px;
+        flex: none;
+      }
+      .row .av {
+        display: grid;
+        place-items: center;
+        border-radius: 8px;
+        background: rgba(var(--primary-rgb), 0.25);
+        color: var(--primary);
+        font-weight: 800;
+      }
+      .row .name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .row .sub {
+        margin-left: auto;
+        color: var(--textDim);
+        font-size: 11.5px;
+        white-space: nowrap;
+        max-width: 45%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .hint {
+        color: var(--textDim);
+        font-size: 11.5px;
+        display: flex;
+        gap: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="panel">
+      <div class="top">
+        <i class="ic">&#xE721;</i>
+        <input id="q" type="text" placeholder="Search apps…" autocomplete="off" spellcheck="false" autofocus />
+      </div>
+      <div class="modes">
+        <button data-mode="apps">Apps</button>
+        <button data-mode="windows">Windows</button>
+        <button data-mode="run">Run</button>
+      </div>
+      <div id="list"></div>
+      <div class="hint">
+        <span><kbd>↑↓</kbd> select</span><span><kbd>Enter</kbd> open</span><span><kbd>Tab</kbd> mode</span><span><kbd>Esc</kbd> close</span>
+      </div>
+    </div>
+
+    <script type="module">
+      import { zebar, mw4w, b64, json, popup, score, esc } from './lib/mw4w.js';
+
+      // fresh for the next show: empty search, apps mode, current app cache
+      const close = popup({
+        onHide: async () => {
+          q.value = '';
+          mode = 'apps';
+          sel = 0;
+          apps = await json('cache/apps.json', apps);
+          render();
+          q.focus();
+        },
+      });
+      const q = document.getElementById('q');
+      const list = document.getElementById('list');
+      const MODES = ['apps', 'windows', 'run'];
+      let mode = 'apps';
+      let apps = await json('cache/apps.json', []);
+      let items = [];
+      let sel = 0;
+
+      const glaze = zebar.createProvider({ type: 'glazewm' });
+
+      let uses = {};
+      try {
+        uses = JSON.parse(localStorage.getItem('uses') || '{}');
+      } catch {}
+      const bump = id => {
+        uses[id] = (uses[id] || 0) + 1;
+        try {
+          localStorage.setItem('uses', JSON.stringify(uses));
+        } catch {}
+      };
+
+      // Refresh the app cache in the background (new installs show up next time).
+      if (!apps.length) mw4w('cache').then(async () => ((apps = await json('cache/apps.json', [])), render()));
+
+      function rows() {
+        const text = q.value.trim();
+        if (mode === 'apps') {
+          return apps
+            .map(a => ({ a, m: score(a.name, text) }))
+            .filter(x => x.m >= 0)
+            .map(({ a, m }) => ({ a, s: m + Math.min(uses[a.id] || 0, 50) * (text ? 2 : 20) }))
+            .sort((x, y) => y.s - x.s || x.a.name.localeCompare(y.a.name))
+            .slice(0, 60)
+            .map(({ a }) => ({ kind: 'app', id: a.id, name: a.name, icon: a.icon }));
+        }
+        if (mode === 'windows') {
+          return (glaze.output?.allWindows ?? [])
+            .map(w => ({ w, s: Math.max(score(w.title, text), score(w.processName, text)) }))
+            .filter(x => x.s >= 0)
+            .sort((x, y) => y.s - x.s)
+            .map(({ w }) => ({ kind: 'win', id: w.id, name: w.title || w.processName, sub: w.processName }));
+        }
+        return text ? [{ kind: 'run', name: text, sub: 'Run command' }] : [];
+      }
+
+      function render() {
+        items = rows();
+        if (!items.length && mode === 'apps' && q.value.trim()) items = [{ kind: 'run', name: q.value.trim(), sub: 'Run command' }];
+        sel = Math.min(sel, Math.max(0, items.length - 1));
+        list.innerHTML = items
+          .map((it, i) => {
+            const pic = it.icon
+              ? `<img src="${it.icon}" onerror="this.outerHTML='<div class=av>${esc(it.name[0] ?? '?')}</div>'" />`
+              : `<div class="av ic">${it.kind === 'win' ? '&#xE7C4;' : '&#xE756;'}</div>`;
+            return `<div class="row ${i === sel ? 'sel' : ''}" data-i="${i}">${pic}<span class="name">${esc(it.name)}</span>${it.sub ? `<span class="sub">${esc(it.sub)}</span>` : ''}</div>`;
+          })
+          .join('');
+        document.querySelectorAll('.modes button').forEach(b => b.classList.toggle('on', b.dataset.mode === mode));
+        q.placeholder = { apps: 'Search apps…', windows: 'Search windows…', run: 'Command to run…' }[mode];
+        list.querySelector('.sel')?.scrollIntoView({ block: 'nearest' });
+      }
+
+      async function activate(it) {
+        if (!it) return;
+        await close(); // hide first: never wait on the app starting
+        if (it.kind === 'app') {
+          bump(it.id);
+          zebar.shellExec('explorer', [`shell:AppsFolder\\${it.id}`]);
+        } else if (it.kind === 'win') {
+          glaze.output?.runCommand(`focus --container-id ${it.id}`);
+        } else if (glaze.output) {
+          glaze.output.runCommand(`shell-exec ${it.name}`); // instant, like Win+R
+        } else {
+          mw4w('run', b64(it.name));
+        }
+      }
+
+      const setMode = m => ((mode = m), (sel = 0), render(), q.focus());
+
+      q.addEventListener('input', () => ((sel = 0), render()));
+      addEventListener('keydown', e => {
+        if (e.key === 'ArrowDown') sel = Math.min(sel + 1, items.length - 1);
+        else if (e.key === 'ArrowUp') sel = Math.max(sel - 1, 0);
+        else if (e.key === 'Enter') return activate(items[sel]);
+        else if (e.key === 'Tab') {
+          e.preventDefault();
+          return setMode(MODES[(MODES.indexOf(mode) + (e.shiftKey ? 2 : 1)) % 3]);
+        } else return;
+        e.preventDefault();
+        render();
+      });
+      list.addEventListener('click', e => {
+        const r = e.target.closest('.row');
+        if (r) activate(items[+r.dataset.i]);
+      });
+      document.querySelector('.modes').addEventListener('click', e => e.target.dataset.mode && setMode(e.target.dataset.mode));
+      glaze.onOutput(() => mode === 'windows' && render());
+
+      render();
+      q.focus();
+      // Keep the app cache fresh (new installs) without paying for it on every open.
+      try {
+        if (Date.now() - (+localStorage.getItem('cached') || 0) > 30 * 60e3) {
+          localStorage.setItem('cached', Date.now());
+          setTimeout(() => mw4w('cache'), 1500);
+        }
+      } catch {}
+    </script>
+  </body>
+</html>
