@@ -138,6 +138,14 @@ function Update-Colors {
     $css += "  --$k`: $($c[$k]);`n  --$k-rgb: $($x.R), $($x.G), $($x.B);`n"
   }
   Write-Utf8 (Join-Path $Pack 'colors.css') ($css + "}`n")
+  # liquid glass backdrop for the bar and dock: a small copy of the wallpaper (same aspect, the CSS crops it like Fill)
+  $glass = Join-Path $Cache 'glass.jpg'
+  if ($wp -and (Test-Path $wp)) {
+    try {
+      $img = [Drawing.Image]::FromFile($wp); $gh = [int](960 * $img.Height / $img.Width); $img.Dispose()
+      [Mw4w.Native]::Thumb($wp, $glass, 960, $gh)
+    } catch { }
+  } elseif (Test-Path $glass) { Remove-Item $glass }
   Save-Json (Join-Path $Cache 'colors.json') $c
   # Alacritty imports this; it live-reloads on change.
   $ala = Join-Path $env:APPDATA 'alacritty'
@@ -617,7 +625,7 @@ function Update-WinIcons {
 function Startup {
   Sync-Taskbar
   $st = Get-State; $st.barHidden = $false; $st.autoPid = $null; Save-State $st
-  if (-not (Test-Path (Join-Path $Pack 'colors.css'))) { Update-Colors | Out-Null; Update-Glaze }
+  if (-not (Test-Path (Join-Path $Pack 'colors.css')) -or -not (Test-Path (Join-Path $Cache 'glass.jpg'))) { Update-Colors | Out-Null; Update-Glaze }
   if ((Get-Settings).showMedia) { Start-Self 'media-loop' }
   Start-Self 'updates-now'
   Update-Thumbs
