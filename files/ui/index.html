@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Files</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="app.css" />
+    <link rel="stylesheet" href="chroma.css" />
+    <link rel="stylesheet" href="colors.css" />
+  </head>
+  <body>
+    <svg width="0" height="0" style="position: absolute">
+      <defs>
+        <!-- file type tiles (64x64, filled) -->
+        <symbol id="t-folder" viewBox="0 0 64 64">
+          <path fill="var(--folder-back)" d="M5 13.5A4.5 4.5 0 0 1 9.5 9h13.4a4 4 0 0 1 2.9 1.2l3.6 3.8h25.1a4.5 4.5 0 0 1 4.5 4.5V50a4.5 4.5 0 0 1-4.5 4.5h-45A4.5 4.5 0 0 1 5 50z" />
+          <path fill="var(--folder)" d="M5 22.5A4.5 4.5 0 0 1 9.5 18h45a4.5 4.5 0 0 1 4.5 4.5v27.5a4.5 4.5 0 0 1-4.5 4.5h-45A4.5 4.5 0 0 1 5 50z" />
+          <path fill="#fff" opacity=".13" d="M5 22.5A4.5 4.5 0 0 1 9.5 18h45a4.5 4.5 0 0 1 4.5 4.5V24H5z" />
+        </symbol>
+        <symbol id="t-file" viewBox="0 0 64 64">
+          <path fill="var(--k, #6e7681)" d="M15 4h24.5L54 18.5V56a4 4 0 0 1-4 4H15a4 4 0 0 1-4-4V8a4 4 0 0 1 4-4z" />
+          <path fill="#000" opacity=".22" d="M39.5 4v10.5a4 4 0 0 0 4 4H54z" />
+          <path fill="#fff" opacity=".1" d="M15 4h24.5v3H11.3A4 4 0 0 1 15 4z" />
+        </symbol>
+        <symbol id="t-drive" viewBox="0 0 64 64">
+          <rect x="6" y="18" width="52" height="30" rx="6" fill="#5b6472" />
+          <rect x="6" y="18" width="52" height="15" rx="6" fill="#7d8796" />
+          <circle cx="48" cy="40" r="3" fill="#4ade80" />
+          <rect x="13" y="38.5" width="22" height="3" rx="1.5" fill="#3a414c" />
+        </symbol>
+
+        <!-- line icons (24x24) -->
+        <symbol id="i-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6" /></symbol>
+        <symbol id="i-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></symbol>
+        <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" /></symbol>
+        <symbol id="i-up" viewBox="0 0 24 24"><path d="m18 15-6-6-6 6" /></symbol>
+        <symbol id="i-parent" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7" /></symbol>
+        <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V21h14V9.5" /><path d="M10 21v-6h4v6" /></symbol>
+        <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.8-3.8" /></symbol>
+        <symbol id="i-fsearch" viewBox="0 0 24 24"><path d="M10 19H4.5A1.5 1.5 0 0 1 3 17.5v-11A1.5 1.5 0 0 1 4.5 5H9l2 2h8.5A1.5 1.5 0 0 1 21 8.5V11" /><circle cx="16.5" cy="16.5" r="3.5" /><path d="m21 21-2-2" /></symbol>
+        <symbol id="i-more" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.2" fill="currentColor" /><circle cx="12" cy="12" r="1.2" fill="currentColor" /><circle cx="12" cy="19" r="1.2" fill="currentColor" /></symbol>
+        <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></symbol>
+        <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1.5" /><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5" /><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5" /><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5" /></symbol>
+        <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11" /><path d="M4.5 6h.01M4.5 12h.01M4.5 18h.01" stroke-width="3" /></symbol>
+        <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" /></symbol>
+        <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3l-5.6 2.9 1.1-6.2L3 9.6l6.2-.9z" /></symbol>
+        <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></symbol>
+        <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 6.5h16M9 6.5V4h6v2.5M6 6.5 7 21h10l1-14.5M10 11v6M14 11v6" /></symbol>
+        <symbol id="i-pc" viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="12.5" rx="2" /><path d="M8 20.5h8M12 16.5v4" /></symbol>
+        <symbol id="i-drive" viewBox="0 0 24 24"><rect x="2.5" y="12.5" width="19" height="8" rx="2" /><path d="M5 12.5 7.5 4h9l2.5 8.5" /><path d="M6.5 16.5h.01M10 16.5h.01" stroke-width="2.6" /></symbol>
+        <symbol id="i-usb" viewBox="0 0 24 24"><rect x="7" y="9" width="10" height="13" rx="2" /><path d="M9 9V3h6v6M10.5 5.5h.01M13.5 5.5h.01" /></symbol>
+        <symbol id="i-net" viewBox="0 0 24 24"><rect x="9" y="2.5" width="6" height="6" rx="1" /><rect x="2.5" y="15.5" width="6" height="6" rx="1" /><rect x="15.5" y="15.5" width="6" height="6" rx="1" /><path d="M12 8.5v3.5M5.5 15.5V12h13v3.5" /></symbol>
+        <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2h8.5A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z" /></symbol>
+        <symbol id="i-fplus" viewBox="0 0 24 24"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2h8.5A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z" /><path d="M12 10v6M9 13h6" /></symbol>
+        <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H6.5A1.5 1.5 0 0 0 5 4.5v15A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5V8z" /><path d="M14 3v5h5" /></symbol>
+        <symbol id="i-fileplus" viewBox="0 0 24 24"><path d="M14 3H6.5A1.5 1.5 0 0 0 5 4.5v15A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5V8z" /><path d="M14 3v5h5M12 11v6M9 14h6" /></symbol>
+        <symbol id="i-doc" viewBox="0 0 24 24"><path d="M14 3H6.5A1.5 1.5 0 0 0 5 4.5v15A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5V8z" /><path d="M14 3v5h5M9 13h6M9 17h6" /></symbol>
+        <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="13" height="13" rx="2" /><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3" /></symbol>
+        <symbol id="i-cut" viewBox="0 0 24 24"><circle cx="6" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12" /></symbol>
+        <symbol id="i-paste" viewBox="0 0 24 24"><rect x="8" y="2.5" width="8" height="4" rx="1" /><path d="M16 4.5h2a2 2 0 0 1 2 2V20a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6.5a2 2 0 0 1 2-2h2" /></symbol>
+        <symbol id="i-pen" viewBox="0 0 24 24"><path d="M16.5 3.5a2.5 2.5 0 0 1 3.5 3.5L7.5 19.5 3 21l1.5-4.5z" /></symbol>
+        <symbol id="i-ext" viewBox="0 0 24 24"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /></symbol>
+        <symbol id="i-apps" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5" /><rect x="13.5" y="3.5" width="7" height="7" rx="1.5" /><rect x="3.5" y="13.5" width="7" height="7" rx="1.5" /><path d="M17 13.5v7M13.5 17h7" /></symbol>
+        <symbol id="i-term" viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="16" rx="2" /><path d="m7 9.5 3 2.5-3 2.5M12.5 15h4.5" /></symbol>
+        <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7" /><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7" /></symbol>
+        <symbol id="i-undo" viewBox="0 0 24 24"><path d="M3 7v6h6" /><path d="M21 17a9 9 0 0 0-15-6.7L3 13" /></symbol>
+        <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" /><circle cx="12" cy="12" r="3" /></symbol>
+        <symbol id="i-pane" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M14.5 4v16" /></symbol>
+        <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7L20 8.5" /><path d="M20 3.5v5h-5" /></symbol>
+        <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 16v-4.5M12 8h.01" /></symbol>
+        <symbol id="i-zip" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="5" rx="1" /><path d="M5 9v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9M10 13h4" /></symbol>
+        <symbol id="i-unzip" viewBox="0 0 24 24"><path d="M12 3v11M7.5 9.5 12 14l4.5-4.5" /><path d="M4 15v3.5A2.5 2.5 0 0 0 6.5 21h11a2.5 2.5 0 0 0 2.5-2.5V15" /></symbol>
+        <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5" /></symbol>
+        <symbol id="i-dl" viewBox="0 0 24 24"><path d="M12 3.5v11M7.5 10l4.5 4.5 4.5-4.5M5 20h14" /></symbol>
+        <symbol id="i-img" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2.5" /><circle cx="9" cy="9" r="2" /><path d="m21 15-5-5L5 21" /></symbol>
+        <symbol id="i-music" viewBox="0 0 24 24"><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></symbol>
+        <symbol id="i-video" viewBox="0 0 24 24"><rect x="2.5" y="5.5" width="14" height="13" rx="2" /><path d="m21.5 8-5 4 5 4z" /></symbol>
+        <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor" stroke="none" /></symbol>
+        <symbol id="i-code" viewBox="0 0 24 24"><path d="m8.5 8-4 4 4 4M15.5 8l4 4-4 4M13.5 5.5l-3 13" /></symbol>
+        <symbol id="i-lines" viewBox="0 0 24 24"><path d="M6 7h12M6 11h12M6 15h12M6 19h7" /></symbol>
+        <symbol id="i-font" viewBox="0 0 24 24"><path d="m4 19 6-14h1l6 14M6.5 14h8M17 19v-6.5a2.5 2.5 0 0 1 5 0V19" /></symbol>
+        <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5v.2a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1h-.2a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5v-.2a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1h.2a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z" /></symbol>
+        <symbol id="i-pdf" viewBox="0 0 24 24"><path d="M7 15.5V9h2a2 2 0 0 1 0 4H7M12.5 9v6.5h1.2a2.6 2.6 0 0 0 0-6.5zM18 15.5V9h3M18 12.2h2.4" /></symbol>
+        <symbol id="i-bm" viewBox="0 0 24 24"><path d="M6 3.5h12v17l-6-4-6 4z" /></symbol>
+        <symbol id="i-sort" viewBox="0 0 24 24"><path d="M3 7h13M3 12h9M3 17h5M18 6v12M15 15l3 3 3-3" /></symbol>
+        <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></symbol>
+        <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14" /></symbol>
+        <symbol id="i-window" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 9h18" /></symbol>
+        <symbol id="i-select" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="2.5" stroke-dasharray="3 3" /><path d="m8.5 12 2.5 2.5 4.5-5" /></symbol>
+      </defs>
+    </svg>
+
+    <div id="app">
+      <aside id="side">
+        <div class="hdr side-hdr drag">
+          <button class="ib" id="b-search" title="Search (Ctrl+F)"><svg class="i"><use href="#i-search" /></svg></button>
+          <span class="title">Files</span>
+          <button class="ib" id="b-appmenu" title="Main menu"><svg class="i"><use href="#i-more" /></svg></button>
+        </div>
+        <nav id="places"></nav>
+        <div id="ixstat" title="Click to rescan"><span class="dot"></span><span class="t">Index</span></div>
+      </aside>
+
+      <main id="main">
+        <div class="hdr main-hdr drag">
+          <button class="ib" id="b-back" title="Back (Alt+Left)"><svg class="i"><use href="#i-left" /></svg></button>
+          <button class="ib" id="b-fwd" title="Forward (Alt+Right)"><svg class="i"><use href="#i-right" /></svg></button>
+          <div id="pathbar">
+            <div id="crumbs"></div>
+            <button class="ib sm" id="b-fmenu" title="Folder menu"><svg class="i"><use href="#i-more" /></svg></button>
+          </div>
+          <button class="ib" id="b-search2" title="Search this folder (Ctrl+F)"><svg class="i"><use href="#i-fsearch" /></svg></button>
+          <button class="ib" id="b-view" title="Grid / list (Ctrl+1, Ctrl+2)"><svg class="i"><use href="#i-grid" /></svg></button>
+          <button class="ib" id="b-vmenu" title="View options"><svg class="i" style="width: 13px"><use href="#i-down" /></svg></button>
+          <button class="ib" id="b-close" title="Close (Ctrl+W)"><svg class="i"><use href="#i-x" /></svg></button>
+        </div>
+        <div id="sbar">
+          <button class="chip" data-w="here">This folder</button>
+          <button class="chip" data-w="all">Everywhere</button>
+          <span style="width: 8px"></span>
+          <button class="chip" data-c="0">Names</button>
+          <button class="chip" data-c="1">Contents</button>
+          <span class="stat"></span>
+        </div>
+        <div id="tbar">
+          <span class="grow"></span>
+          <button class="btn" id="b-restore"><svg class="i"><use href="#i-undo" /></svg>Restore</button>
+          <button class="btn" id="b-purge"><svg class="i"><use href="#i-trash" /></svg>Delete</button>
+          <button class="btn danger" id="b-empty">Empty Trash…</button>
+        </div>
+        <div id="cols">
+          <button data-k="name">Name</button>
+          <button data-k="size" class="r c-sz">Size</button>
+          <button data-k="mtime" class="r c-dt">Modified</button>
+          <span></span>
+        </div>
+        <div id="scroller" tabindex="0">
+          <div id="sizer"></div>
+          <div id="rows"></div>
+          <div id="empty"><svg class="i"><use href="#i-folder" /></svg><b>Folder is Empty</b><span></span></div>
+        </div>
+        <div id="computer"></div>
+        <div id="bubble"></div>
+      </main>
+
+      <aside id="pane">
+        <div class="grip"></div>
+        <div class="hdr"><b></b>
+          <button class="ib sm" id="pv-open" title="Open"><svg class="i"><use href="#i-ext" /></svg></button>
+          <button class="ib sm" id="pv-close" title="Hide preview (Ctrl+I)"><svg class="i"><use href="#i-x" /></svg></button>
+        </div>
+        <div id="pv"></div>
+      </aside>
+    </div>
+
+    <div id="ql"><div class="box"><div class="hdr"><b></b>
+      <button class="ib sm" id="ql-open" title="Open"><svg class="i"><use href="#i-ext" /></svg></button>
+      <button class="ib sm" id="ql-close" title="Close (Space)"><svg class="i"><use href="#i-x" /></svg></button>
+    </div><div id="qlb"></div></div></div>
+    <div id="dlg"><div class="box"></div></div>
+    <div id="toasts"></div>
+
+    <script src="md.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

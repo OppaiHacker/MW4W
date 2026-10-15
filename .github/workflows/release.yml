@@ -40,6 +40,7 @@ jobs:
             - MediaControll capsule and dynamic island (cover, seek, controls, per-app volume)
             - Quick panels: sound (devices, per-app mixer), network (Wi-Fi list and connect, Bluetooth), power (battery, brightness, power mode), calendar
             - Optional: MW4W as the Windows shell instead of explorer.exe (`-ReplaceExplorer` or Settings → System)
+            - MW4W Files: Nautilus-style file manager with instant indexed search (names and contents), code/media/document previews and Windows thumbnails (SUPER+E)
 
             Options: `MW4W-Setup.exe -NoStart -KeepWallpaper -ReplaceExplorer`; uninstall: `MW4W-Setup.exe --uninstall`.
             The exe isn't code-signed, so SmartScreen may ask: *More info → Run anyway*.
