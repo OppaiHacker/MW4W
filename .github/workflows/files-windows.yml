@@ -1,0 +1,23 @@
+name: MW4W Files on Windows
+
+on:
+  push:
+    paths: ['files/**', '.github/workflows/files-windows.yml']
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: files
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: files/go.mod
+          cache-dependency-path: files/go.sum
+      - name: Test (index, API, and the Windows parts for real)
+        run: go test -v -count=1 -timeout 15m .
+      - name: Build
+        run: go build -trimpath -ldflags "-s -w -H windowsgui" -o mw4w-files.exe .
