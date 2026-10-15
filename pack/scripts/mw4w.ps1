@@ -751,6 +751,7 @@ function Set-Settings([string]$b64) {
   $keys = @($patch.PSObject.Properties.Name)
   if ($keys -contains 'hideTaskbar') { Sync-Taskbar }
   if ($keys -contains 'replaceExplorer') { Sync-Shell ([bool]$patch.replaceExplorer) }
+  if ($keys -contains 'filesForFolders') { Sync-Folders ([bool]$patch.filesForFolders) }
   if ($keys -contains 'dynamicColors' -or $keys -contains 'accent') { Update-Colors | Out-Null }
   Apply
 }
@@ -776,6 +777,24 @@ function Sync-Shell([bool]$on) {
   elseif ((Get-ItemProperty $WinlogonKey -ErrorAction SilentlyContinue).Shell -like '*mw4w-shell*') { Remove-ItemProperty $WinlogonKey Shell }
 }
 
+# MW4W Files opens folders everywhere (double-click on a folder, "Open folder" in apps, shortcuts):
+# the per-user Directory and Drive verbs. Off gives them back to Explorer.
+function Sync-Folders([bool]$on) {
+  $exe = Join-Path $Pack 'bin\mw4w-files.exe'
+  foreach ($cls in 'Directory', 'Drive') {
+    $shell = "HKCU:\Software\Classes\$cls\shell"
+    if ($on -and (Test-Path $exe)) {
+      New-Item -Force "$shell\mw4wfiles\command" | Out-Null
+      Set-ItemProperty "$shell\mw4wfiles" '(default)' 'Open in MW4W Files'
+      Set-ItemProperty "$shell\mw4wfiles\command" '(default)' "`"$exe`" `"%1`""
+      Set-ItemProperty $shell '(default)' 'mw4wfiles'
+    } elseif (Test-Path "$shell\mw4wfiles") {
+      Remove-Item -Recurse -Force "$shell\mw4wfiles"
+      if ((Get-ItemProperty $shell -ErrorAction SilentlyContinue).'(default)' -eq 'mw4wfiles') { Remove-ItemProperty $shell '(default)' }
+    }
+  }
+}
+
 # Icons for the bar's taskbar module: cache\icons\proc-<process>.png
 function Update-WinIcons {
   Load-Native
@@ -794,6 +813,9 @@ function Startup {
   $st = Get-State; $st.barHidden = $false; $st.autoPid = $null; Save-State $st
   if (-not (Test-Path (Join-Path $Pack 'colors.css')) -or -not (Test-Path (Join-Path $Cache 'glass.jpg'))) { Update-Colors | Out-Null; Update-Glaze }
   if ((Get-Settings).showMedia) { Start-Self 'media-loop' }
+  # MW4W Files stays resident (index kept live, a window ready): opening one is instant
+  $files = Join-Path $Pack 'bin\mw4w-files.exe'
+  if (Test-Path $files) { Start-Process $files '--background' }
   Start-Self 'updates-now'
   Update-Thumbs
   Update-Apps
@@ -839,6 +861,7 @@ function Invoke-Mw4w([string]$Cmd, [string]$Arg) {
     'run' { Start-Self 'run-now', $Arg }
     'run-now' { Start-Process cmd.exe ('/c start "" ' + [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($Arg))) -WindowStyle Hidden }
     'launch' { Start-Process "shell:AppsFolder\$Arg" }  # ShellExecute, no explorer.exe needed (MW4W may be the shell)
+    'files' { Set-Settings ([Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes((@{ filesForFolders = ($Arg -eq 'on') } | ConvertTo-Json)))) }
     'shell' { Set-Settings ([Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes((@{ replaceExplorer = ($Arg -eq 'on') } | ConvertTo-Json)))) }
     'selftest' {
       $s = Get-Settings

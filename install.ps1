@@ -30,6 +30,8 @@ foreach ($f in "$Glzr\glazewm\config.yaml", "$Glzr\zebar\settings.json") {
 
 Step "Installing widget pack -> $Pack"
 New-Item -ItemType Directory -Force $Pack | Out-Null
+# a running exe can't be replaced
+Get-Process mw4w-files -ErrorAction SilentlyContinue | Stop-Process -Force
 # settings.json (user) and cache/ survive reinstalls.
 robocopy (Join-Path $Repo 'pack') $Pack /E /NFL /NDL /NJH /NJS /NP /XF settings.json /XD cache | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy failed ($LASTEXITCODE)" }
@@ -45,7 +47,7 @@ if (-not (Test-Path $settingsPath)) {
   }
   $terminal = if (Test-Path $AlacrittyExe) { $AlacrittyExe } elseif (Get-Command wt -ErrorAction SilentlyContinue) { 'wt' } else { 'powershell' }
   Write-Host "    terminal=$terminal browser=$browser"
-  Write-Utf8 $settingsPath (@{ apps = @{ terminal = $terminal; browser = $browser; files = 'explorer'; calculator = 'calc' } } | ConvertTo-Json)
+  Write-Utf8 $settingsPath (@{ apps = @{ terminal = $terminal; browser = $browser; files = (Join-Path $Pack 'bin\mw4w-files.exe'); calculator = 'calc' } } | ConvertTo-Json)
 }
 
 Step "Wallpapers -> $Walls"
@@ -92,6 +94,13 @@ if ($KeepWallpaper -or $hasWallpaper) { & powershell -NoProfile -ExecutionPolicy
 else { & powershell -NoProfile -ExecutionPolicy Bypass -File $mw4w wallpaper (Join-Path $Walls 'mw4w-aurora.jpg') }
 if ($LASTEXITCODE) { throw 'mw4w.ps1 failed, see cache\error.log' }
 & powershell -NoProfile -ExecutionPolicy Bypass -File $mw4w thumbs
+
+# upgrade: the file manager was Explorer before MW4W Files existed
+$u = Get-Content $settingsPath -Raw | ConvertFrom-Json
+if ($u.apps -and $u.apps.files -eq 'explorer') {
+  $u.apps.files = Join-Path $Pack 'bin\mw4w-files.exe'
+  Write-Utf8 $settingsPath ($u | ConvertTo-Json -Depth 8)
+}
 
 if ($ReplaceExplorer) {
   Step 'MW4W replaces explorer.exe as the shell (next sign-in)'

@@ -14,7 +14,14 @@ if (Get-Process glazewm -ErrorAction SilentlyContinue) { & $cli command wm-exit 
 # winmask --exit shows the hidden taskbar again (GlazeWM's shutdown_commands do the same).
 $wm = Join-Path $Pack 'bin\winmask.exe'
 if (Test-Path $wm) { & $wm --exit; Start-Sleep -Milliseconds 500 }
-Get-Process zebar, winmask, mw4w-shell -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process zebar, winmask, mw4w-shell, mw4w-files -ErrorAction SilentlyContinue | Stop-Process -Force
+# folders open in Explorer again; the file index goes
+foreach ($cls in 'Directory', 'Drive') {
+  $shell = "HKCU:\Software\Classes\$cls\shell"
+  if (Test-Path "$shell\mw4wfiles") { Remove-Item -Recurse -Force "$shell\mw4wfiles" }
+  if ((Get-ItemProperty $shell -ErrorAction SilentlyContinue).'(default)' -eq 'mw4wfiles') { Remove-ItemProperty $shell '(default)' }
+}
+Remove-Item -Recurse -Force (Join-Path $env:LOCALAPPDATA 'mw4w-files') -ErrorAction SilentlyContinue
 Remove-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' 'MW4W-GlazeWM' -ErrorAction SilentlyContinue
 
 # Show the taskbar again.

@@ -1,7 +1,53 @@
 # MW4W — My Windows 4 Work
 
 [ML4W (My Linux For Work)](https://www.ml4w.com/)-style Hyprland on Windows 11.
-**GlazeWM** does the tiling; **Zebar** (widget pack `mw4w`) replaces waybar, rofi, wlogout, waypaper, the ML4W Settings app and the keybinding cheat sheet.
+**GlazeWM** does the tiling; **Zebar** (widget pack `mw4w`) replaces waybar, rofi, wlogout, waypaper, the ML4W Settings app and the keybinding cheat sheet;
+**MW4W Files** replaces Explorer's file manager (Nautilus look, instant indexed search, previews).
+
+![Desktop](docs/screenshots/mw4w-desktop.webp)
+
+<details>
+<summary><b>Screenshots</b>: bar, tray, MediaControll, quick panels, popups, MW4W Files</summary>
+
+Bar (tray drawer open)
+
+![Bar](docs/screenshots/mw4w-bar-tray-open.webp)
+
+Popups open over a window: MediaControll island and the Sound panel
+
+![Popups](docs/screenshots/mw4w-desktop-popups.webp)
+
+| MediaControll | Sound | Network |
+| --- | --- | --- |
+| ![Island](docs/screenshots/mw4w-island.webp) | ![Sound](docs/screenshots/mw4w-quick-audio.webp) | ![Network](docs/screenshots/mw4w-quick-network.webp) |
+| **Power** | **Calendar** | **Launcher** |
+| ![Power](docs/screenshots/mw4w-quick-battery.webp) | ![Calendar](docs/screenshots/mw4w-quick-calendar.webp) | ![Launcher](docs/screenshots/mw4w-launcher.webp) |
+
+| Wallpapers | Keybindings | Settings |
+| --- | --- | --- |
+| ![Wallpapers](docs/screenshots/mw4w-wallpaper.webp) | ![Keybindings](docs/screenshots/mw4w-keybinds.webp) | ![Settings](docs/screenshots/mw4w-settings.webp) |
+
+Dock
+
+![Dock](docs/screenshots/mw4w-dock.webp)
+
+Power menu
+
+![Power menu](docs/screenshots/mw4w-power.webp)
+
+MW4W Files
+
+| | | |
+| --- | --- | --- |
+| ![Home](docs/screenshots/files-home.webp) | ![Code](docs/screenshots/files-code-preview.webp) | ![Images](docs/screenshots/files-grid-images.webp) |
+| ![Search](docs/screenshots/files-search-names.webp) | ![Contents](docs/screenshots/files-search-contents.webp) | ![Quick Look](docs/screenshots/files-quick-look.webp) |
+| ![Markdown](docs/screenshots/files-markdown-preview.webp) | ![CSV](docs/screenshots/files-csv-preview.webp) | ![Video](docs/screenshots/files-video-preview.webp) |
+| ![Font](docs/screenshots/files-font-preview.webp) | ![Archive](docs/screenshots/files-archive-preview.webp) | ![Menu](docs/screenshots/files-context-menu.webp) |
+| ![Trash](docs/screenshots/files-trash.webp) | ![Computer](docs/screenshots/files-computer.webp) | ![Path](docs/screenshots/files-path-autocomplete.webp) |
+
+The screenshots are rendered from the repo's own pages with demo data (made on Linux, so glyphs of the
+Windows-only *Segoe Fluent Icons* font are missing, e.g. in the power menu).
+</details>
 
 | ML4W (Linux)         | Here                                                                                                   |
 | -------------------- | ------------------------------------------------------------------------------------------------------ |
@@ -52,7 +98,7 @@ no taskbar, Start menu, desktop icons, Win+X menu or Explorer's ~100 MB; the bar
 `mw4w-shell` does Explorer's sign-in chores — tells Winlogon the shell is ready, runs the `Run`/`RunOnce` keys and the
 Startup folders (skipping what Task Manager's Startup tab turned off) — and keeps GlazeWM running (restarted after a crash).
 
-Folders still open in Explorer windows (it only becomes the shell when it is the registered one).
+Folders open in MW4W Files with *Settings → System → MW4W Files opens folders* (else in Explorer windows: Explorer only becomes the shell when it is the registered one).
 Toasts, the volume/brightness OSD, Win+A/Win+N panels and the Windows tray come from Explorer and are gone;
 the bar has its own tray (Zebar). If GlazeWM is missing or keeps crashing, `mw4w-shell` starts Explorer, so a broken
 install never ends at a black screen; CTRL+SHIFT+ESC → *Run new task* → `explorer` works too. `mw4w.ps1 shell off`
@@ -60,6 +106,40 @@ or the uninstaller switch back.
 
 This is a user-mode shell like Explorer itself — nothing of a window manager or shell belongs in the kernel
 (a driver could only crash the machine and needs a Microsoft signature).
+
+## MW4W Files
+
+`bin/mw4w-files.exe` (SUPER+E) is a file manager in the style of GNOME Files (Nautilus), built for speed:
+
+- **Instant search** from its own index (SQLite, FTS5 trigram): any part of a name in milliseconds, or the **contents**
+  of text and code files. `ext:pdf`, `kind:image|video|audio|doc|code|archive|dir` filter. Just start typing in a folder.
+- **Previews** in a side pane (Ctrl+I) or Quick Look (Space): code with syntax highlighting and line numbers (chroma),
+  Markdown rendered, CSV as a table, images, video, audio, PDF, fonts, archive contents (zip, tar), hex for binaries,
+  folder size from the index.
+- **Thumbnails** from Windows (photos, videos, PDFs, Office files, app icons; the system thumbnail cache), kept in the index.
+- Recent, Starred, Trash (the real Recycle Bin: restore, delete, empty; Undo after Delete), This PC with drive usage,
+  bookmarks (drag a folder onto the sidebar), path bar with Tab completion (Ctrl+L), list and grid, zoom, hidden files,
+  rename in place (F2), new folder/file, copy/cut/paste through the Windows clipboard (works with every app),
+  drag & drop onto folders, compress/extract zip, Open With, Properties, open in terminal (Ctrl+Alt+T).
+- Copy, move and delete go through the Windows copy engine (its progress, conflict and undo).
+
+How it is fast:
+
+- One resident process (`--background`, started with MW4W) keeps the index live (ReadDirectoryChangesW) and a hidden
+  window already loaded, so SUPER+E only shows it: no process or WebView start. Closing a window keeps it as the spare.
+- The index scans with low-priority threads (background mode: no CPU/disk competition), and the first scan fills the
+  name index in one rebuild (10× faster than row by row). Measured here: 87,000 files indexed in 1.4 s; a name search
+  over them takes 0.4–10 ms (a one-letter query ~60 ms), a content search ~1–2 ms, opening a folder ~13 ms; a folder of
+  50,000 files opens in ~150 ms, sorts in ~20 ms and scrolls at 60 fps (its files are stat'ed on all cores).
+- Folders render virtually (only visible rows exist), hovering a folder prefetches it, item counts load for visible rows only,
+  and a listing is one hand-written JSON array.
+
+The index covers your profile and other fixed drives (not `C:\Windows` and the like; `node_modules`, `.git` and hidden folders
+are skipped). Edit `%LOCALAPPDATA%\mw4w-files\config.json` (`roots`, `exclude`, `content`, `contentMaxKB`) and rescan from the menu.
+
+The UI talks to the resident process over HTTP on `127.0.0.1` only, with a random port and a random token per run
+(HttpOnly SameSite cookie), a pinned Host header against DNS rebinding, Origin checks and a strict Content Security Policy;
+nothing is reachable from the network or from web pages. `mw4w-files.exe --quit` stops it.
 
 ## Install
 
@@ -130,11 +210,15 @@ pack/                     -> ~/.glzr/zebar/mw4w
   scripts/mw4w.ps1        the brain: colors, GlazeWM config, wallpapers, power, gamemode, bar, media loop, updates
   scripts/Native.cs       Win32: app icons, wallpaper, dominant color, taskbar, per-app volume
   bin/mw4w-shell.exe      the shell when MW4W replaces Explorer (source: shell/)
+  bin/mw4w-files.exe      MW4W Files, the file manager (source: files/)
   bin/winmask.exe         SUPER doesn't open Start (CTRL+Esc does), SUPER+mouse, workspace slide, hides the taskbar,
                           handles popup keybindings, @mw4w and shell-exec itself (see Speed)
   lib/                    zebar.js (bundled, works offline), shared JS/CSS, icons.js (line icons, media helpers)
 installer/                MW4W-Setup.exe: the repo in one exe that runs install.ps1 (build.sh builds it)
 shell/                    mw4w-shell source (GOOS=windows go build -trimpath -ldflags "-H windowsgui -s -w" -o ../pack/bin/mw4w-shell.exe)
+files/                    MW4W Files source: Go (index, API, previews, WebView2 windows) + ui/ (GOOS=windows go build -trimpath -ldflags "-H windowsgui -s -w" -o ../pack/bin/mw4w-files.exe;
+                          `go run . --serve` runs the UI in a browser on any OS)
+docs/screenshots/         README screenshots
 helper/                   winmask source (go build -trimpath -ldflags "-H windowsgui -s -w" -o ../pack/bin/winmask.exe)
 wallpapers/               7 wallpapers
 ```
