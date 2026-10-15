@@ -159,7 +159,7 @@ func TestRecycleBin(t *testing.T) {
 	}
 	var id string
 	for _, it := range trashList() {
-		if strings.EqualFold(it.Orig, f) {
+		if samePath(it.Orig, f) {
 			id = it.ID
 			if it.Size != 3 || it.Kind != "text" {
 				t.Errorf("item: %+v", it)
@@ -178,14 +178,14 @@ func TestRecycleBin(t *testing.T) {
 	// purge
 	trash([]string{f})
 	for _, it := range trashList() {
-		if strings.EqualFold(it.Orig, f) {
+		if samePath(it.Orig, f) {
 			if err := trashPurge([]string{it.ID}); err != nil {
 				t.Fatal("purge:", err)
 			}
 		}
 	}
 	for _, it := range trashList() {
-		if strings.EqualFold(it.Orig, f) {
+		if samePath(it.Orig, f) {
 			t.Fatal("still in the bin")
 		}
 	}

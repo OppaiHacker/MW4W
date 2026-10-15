@@ -27,6 +27,8 @@ func isHidden(name string, fi fs.FileInfo) bool { return strings.HasPrefix(name,
 
 func lowPriority() {}
 
+func samePath(a, b string) bool { return filepath.Clean(a) == filepath.Clean(b) }
+
 func allowForeground() {}
 
 func singleInstance() bool { return true }

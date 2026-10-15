@@ -663,7 +663,7 @@ func (a *App) apiOp(r *http.Request) (any, error) {
 		sort.Slice(items, func(i, j int) bool { return items[i].Deleted > items[j].Deleted })
 		for _, p := range o.Paths {
 			for _, it := range items {
-				if it.Orig == p {
+				if samePath(it.Orig, p) {
 					ids = append(ids, it.ID)
 					break
 				}

@@ -413,6 +413,23 @@ func readInfo(p string) (orig string, size, deleted int64, ok bool) {
 	return windows.UTF16ToString(u), size, deleted, true
 }
 
+// longPath: p with 8.3 short names expanded (C:\Users\RUNNER~1 -> C:\Users\runneradmin). The file may be
+// gone (it's in the bin), so its folder is expanded.
+func longPath(p string) string {
+	dir := filepath.Dir(p)
+	src, err := windows.UTF16PtrFromString(dir)
+	if err != nil {
+		return p
+	}
+	buf := make([]uint16, windows.MAX_LONG_PATH)
+	if n, err := windows.GetLongPathName(src, &buf[0], uint32(len(buf))); err == nil && n > 0 && int(n) < len(buf) {
+		return filepath.Join(windows.UTF16ToString(buf[:n]), filepath.Base(p))
+	}
+	return p
+}
+
+func samePath(a, b string) bool { return strings.EqualFold(longPath(a), longPath(b)) }
+
 func binItem(id string) (info, data string, err error) {
 	if !strings.Contains(strings.ToLower(id), `\$recycle.bin\`) || !strings.HasPrefix(filepath.Base(id), "$I") {
 		return "", "", errors.New("not in the Recycle Bin")
