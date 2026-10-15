@@ -6,14 +6,28 @@
 | ML4W (Linux)         | Here                                                                                                   |
 | -------------------- | ------------------------------------------------------------------------------------------------------ |
 | Hyprland             | GlazeWM: tiling, gaps, borders, rounded corners, 10 workspaces                                         |
-| nwg-dock             | `dock`: bottom of the screen, open apps (click = focus/next window, middle = close) + launcher; can be turned off in settings (Dock) |
-| waybar (ml4w-modern) | `bar`: Apps, workspaces 1–5, window title, volume, network, battery, hardware/tools/tray drawers, notifications, power, clock |
+| ML4W dock            | `dock`: glass pill at the bottom, open apps (click = focus/next window, middle = close), dot = running, bar = focused; can be turned off in settings (Dock) |
+| ML4W Quickshell bar  | `bar`: one floating glass pill — terminal, workspaces 1–10, media capsule (or window title), apps grid, clock + date, notifications, timer, updates (winget), game mode, volume, network, battery, tray, settings, power |
+| [MediaControll](https://github.com/OppaiHacker/MediaControll) | media capsule in the bar + `island`: hovering it springs open a liquid-glass dynamic island with cover, seek bar, controls and per-app volume |
 | rofi                 | `launcher`: apps with icons, window switcher, Run (Tab)                                                |
 | wlogout              | `power`: lock / logout / suspend / hibernate / reboot / shutdown                                       |
 | waypaper + matugen   | `wallpaper`: changing the wallpaper generates a color palette for the bar, popups, borders and Alacritty |
 | ML4W Settings App    | `settings`: gaps, borders, corners, transparency, apps, bar                                            |
 | keybindings.sh       | `keybinds`: cheat sheet generated from `keybinds.json`                                                 |
 | gamemode.sh          | SUPER+ALT+G: no gaps, borders or transparency                                                          |
+
+## Media (MediaControll)
+
+The capsule shows the cover, the title and an equalizer (dots when paused); it hides when nothing plays.
+Left click = play/pause, right = next, middle = previous. Hovering it opens the island: drag the seek bar,
+drag/scroll for volume, click the speaker to mute.
+
+Windows has no MPRIS; players publish to GSMTC (the media flyout), so any app that shows up there works
+(browsers, Spotify, VLC, Media Player, ...). Zebar's `media` provider gives the title, state and controls;
+`mw4w.ps1 media-loop` (started with GlazeWM, one per session) adds what it lacks — cover art, seekable position and the player's
+own volume (its Core Audio session, falling back to the system volume like MediaControll falls back to the default sink) —
+in `cache/media.json`. The liquid glass is CSS (blurred cover, specular rim) instead of the GLSL shader: WebView2 widgets can't see the desktop behind them.
+Turn it off with *Media player module* in settings.
 
 ## Install
 
@@ -69,15 +83,16 @@ install.ps1 / uninstall.ps1
 pack/                     -> ~/.glzr/zebar/mw4w
   zpack.json              Zebar widgets
   bar.html launcher.html power.html wallpaper.html keybinds.html settings.html
+  island.html             MediaControll dynamic island (opened by hovering the bar's media capsule)
   dock.html               nwg-dock: open apps at the bottom of the screen
   keybinds.json           keybindings: the GlazeWM config and the cheat sheet are generated from it
   alacritty.toml          Alacritty config template (colors: colors.toml written by mw4w.ps1)
   defaults.json           default settings (your changes go to settings.json)
-  scripts/mw4w.ps1        the brain: colors, GlazeWM config, wallpapers, power, gamemode, bar
-  scripts/Native.cs       Win32: app icons, wallpaper, dominant color, taskbar
+  scripts/mw4w.ps1        the brain: colors, GlazeWM config, wallpapers, power, gamemode, bar, media loop, updates
+  scripts/Native.cs       Win32: app icons, wallpaper, dominant color, taskbar, per-app volume
   bin/winmask.exe         SUPER doesn't open Start (CTRL+Esc does), SUPER+mouse, workspace slide, hides the taskbar,
                           handles popup keybindings, @mw4w and shell-exec itself (see Speed)
-  lib/                    zebar.js (bundled, works offline), shared JS/CSS
+  lib/                    zebar.js (bundled, works offline), shared JS/CSS, icons.js (line icons, media helpers)
 helper/                   winmask source (go build -trimpath -ldflags "-H windowsgui -s -w" -o ../pack/bin/winmask.exe)
 wallpapers/               7 wallpapers
 ```

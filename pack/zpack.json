@@ -2,7 +2,7 @@
   "$schema": "https://github.com/glzr-io/zebar/raw/v3.0.0/resources/zpack-schema.json",
   "name": "mw4w",
   "version": "1.0.0",
-  "description": "MW4W (My Windows 4 Work): ML4W-style Hyprland look for Windows: waybar, rofi, wlogout, waypaper, keybindings and settings.",
+  "description": "MW4W (My Windows 4 Work): ML4W-style Hyprland look for Windows: waybar, MediaControll island, rofi, wlogout, waypaper, keybindings and settings.",
   "tags": [
     "topbar",
     "glazewm",
@@ -403,6 +403,68 @@
           "offsetY": "0px",
           "width": "760px",
           "height": "720px",
+          "monitorSelection": {
+            "type": "primary"
+          },
+          "dockToEdge": {
+            "enabled": false,
+            "edge": null,
+            "windowMargin": "0px"
+          }
+        }
+      ]
+    },
+    {
+      "name": "island",
+      "htmlPath": "./island.html",
+      "zOrder": "top_most",
+      "shownInTaskbar": false,
+      "focused": false,
+      "resizable": false,
+      "transparent": true,
+      "includeFiles": [
+        "**/*"
+      ],
+      "caching": {
+        "defaultDuration": 0,
+        "rules": []
+      },
+      "privileges": {
+        "shellCommands": [
+          {
+            "program": "powershell",
+            "argsRegex": ".*"
+          },
+          {
+            "program": "explorer",
+            "argsRegex": ".*"
+          }
+        ]
+      },
+      "presets": [
+        {
+          "name": "default",
+          "anchor": "top_left",
+          "offsetX": "0px",
+          "offsetY": "0px",
+          "width": "440px",
+          "height": "252px",
+          "monitorSelection": {
+            "type": "primary"
+          },
+          "dockToEdge": {
+            "enabled": false,
+            "edge": null,
+            "windowMargin": "0px"
+          }
+        },
+        {
+          "name": "preload",
+          "anchor": "top_left",
+          "offsetX": "0px",
+          "offsetY": "0px",
+          "width": "440px",
+          "height": "252px",
           "monitorSelection": {
             "type": "primary"
           },

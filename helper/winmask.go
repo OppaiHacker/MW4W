@@ -85,6 +85,7 @@ var (
 	showAsync    = user32.NewProc("ShowWindowAsync")
 	dpiAware     = user32.NewProc("SetProcessDpiAwarenessContext")
 	getLong      = user32.NewProc("GetWindowLongPtrW")
+	setLong      = user32.NewProc("SetWindowLongPtrW")
 	redrawWake   = make(chan struct{}, 1)
 	curThread    = syscall.NewLazyDLL("kernel32.dll").NewProc("GetCurrentThreadId")
 	winDown      bool
@@ -197,7 +198,7 @@ func redrawer() {
 	}
 }
 
-// onShow focuses Zebar "mw4w" popups (every widget but the bar and dock) when they appear.
+// onShow focuses Zebar "mw4w" popups (every widget but the bar, dock and island) when they appear.
 func onShow(_, _, hwnd, idObject, _, _, _ uintptr) uintptr {
 	if idObject != 0 {
 		return 0
@@ -213,6 +214,14 @@ func onShow(_, _, hwnd, idObject, _, _, _ uintptr) uintptr {
 		return 0
 	}
 	t := title(hwnd)
+	if t == "Zebar - mw4w / island" {
+		// the media island opens on hover: it must never take the focus from the app under it
+		const gwlExStyle, wsExNoActivate = ^uintptr(19), 0x08000000 // GWL_EXSTYLE = -20
+		if ex, _, _ := getLong.Call(hwnd, gwlExStyle); ex&wsExNoActivate == 0 {
+			setLong.Call(hwnd, gwlExStyle, ex|wsExNoActivate)
+		}
+		return 0
+	}
 	if !strings.HasPrefix(t, "Zebar - mw4w / ") || t == "Zebar - mw4w / bar" || t == "Zebar - mw4w / dock" {
 		return 0
 	}

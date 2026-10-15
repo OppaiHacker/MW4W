@@ -184,4 +184,102 @@ namespace Mw4w
             return outBmp;
         }
     }
+    // Per-app volume for the media island: the Core Audio sessions of the default output
+    // device (what the volume mixer shows), like MediaControll's PipeWire stream volume.
+    public static class Audio
+    {
+        // Volume 0..100 of the first session whose process name is in procs (no .exe);
+        // set >= 0 sets every matching session first. -1: the app has no audio session.
+        public static int AppVolume(string[] procs, int set)
+        {
+            var en = (IMMDeviceEnumerator)new MMDeviceEnumerator();
+            IMMDevice dev;
+            if (en.GetDefaultAudioEndpoint(0, 1, out dev) != 0) return -1; // eRender, eMultimedia
+            object o;
+            var iid = typeof(IAudioSessionManager2).GUID;
+            if (dev.Activate(ref iid, 0x17, IntPtr.Zero, out o) != 0) return -1; // CLSCTX_ALL
+            IAudioSessionEnumerator list;
+            if (((IAudioSessionManager2)o).GetSessionEnumerator(out list) != 0) return -1;
+            int n;
+            list.GetCount(out n);
+            int result = -1;
+            var ctx = Guid.Empty;
+            for (int i = 0; i < n; i++)
+            {
+                IAudioSessionControl2 s;
+                if (list.GetSession(i, out s) != 0) continue;
+                uint pid;
+                s.GetProcessId(out pid);
+                if (pid == 0) continue; // system sounds
+                string name;
+                try { name = System.Diagnostics.Process.GetProcessById((int)pid).ProcessName; }
+                catch { continue; }
+                if (Array.FindIndex(procs, p => string.Equals(p, name, StringComparison.OrdinalIgnoreCase)) < 0) continue;
+                var v = (ISimpleAudioVolume)s;
+                if (set >= 0) v.SetMasterVolume(Math.Min(100, set) / 100f, ref ctx);
+                float f;
+                v.GetMasterVolume(out f);
+                if (result < 0) result = (int)Math.Round(f * 100);
+            }
+            return result;
+        }
+    }
+
+    [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")]
+    class MMDeviceEnumerator { }
+
+    [ComImport, Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    interface IMMDeviceEnumerator
+    {
+        [PreserveSig] int EnumAudioEndpoints(int dataFlow, int stateMask, out IntPtr devices);
+        [PreserveSig] int GetDefaultAudioEndpoint(int dataFlow, int role, out IMMDevice device);
+    }
+
+    [ComImport, Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    interface IMMDevice
+    {
+        [PreserveSig] int Activate(ref Guid iid, int clsCtx, IntPtr activationParams, [MarshalAs(UnmanagedType.IUnknown)] out object iface);
+    }
+
+    // vtable order matters: IAudioSessionManager's two methods come first
+    [ComImport, Guid("77AA99A0-1BD6-484F-8BC7-2C654C9A9B6F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    interface IAudioSessionManager2
+    {
+        [PreserveSig] int GetAudioSessionControl(IntPtr sessionGuid, int flags, out IntPtr control);
+        [PreserveSig] int GetSimpleAudioVolume(IntPtr sessionGuid, int flags, out IntPtr volume);
+        [PreserveSig] int GetSessionEnumerator(out IAudioSessionEnumerator list);
+    }
+
+    [ComImport, Guid("E2F5BB11-0570-40CA-ACDD-3AA01277DEE8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    interface IAudioSessionEnumerator
+    {
+        [PreserveSig] int GetCount(out int count);
+        [PreserveSig] int GetSession(int index, out IAudioSessionControl2 session);
+    }
+
+    [ComImport, Guid("BFB7FF88-7239-4FC9-8FA2-07C950BE9C6D"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    interface IAudioSessionControl2
+    {
+        // IAudioSessionControl
+        [PreserveSig] int GetState(out int state);
+        [PreserveSig] int GetDisplayName(out IntPtr name);
+        [PreserveSig] int SetDisplayName(IntPtr name, IntPtr ctx);
+        [PreserveSig] int GetIconPath(out IntPtr path);
+        [PreserveSig] int SetIconPath(IntPtr path, IntPtr ctx);
+        [PreserveSig] int GetGroupingParam(out Guid param);
+        [PreserveSig] int SetGroupingParam(IntPtr param, IntPtr ctx);
+        [PreserveSig] int RegisterAudioSessionNotification(IntPtr client);
+        [PreserveSig] int UnregisterAudioSessionNotification(IntPtr client);
+        // IAudioSessionControl2
+        [PreserveSig] int GetSessionIdentifier(out IntPtr id);
+        [PreserveSig] int GetSessionInstanceIdentifier(out IntPtr id);
+        [PreserveSig] int GetProcessId(out uint pid);
+    }
+
+    [ComImport, Guid("87CE5498-68D6-44E5-9215-6DA47EF883D8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    interface ISimpleAudioVolume
+    {
+        [PreserveSig] int SetMasterVolume(float level, ref Guid ctx);
+        [PreserveSig] int GetMasterVolume(out float level);
+    }
 }

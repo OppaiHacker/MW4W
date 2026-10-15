@@ -5,335 +5,453 @@
     <link rel="stylesheet" href="colors.css" />
     <link rel="stylesheet" href="lib/base.css" />
     <style>
-      /* waybar theme "ml4w-modern" (ML4W 2.x default) */
+      /* ML4W Quickshell status bar: one floating glass pill, everything in the accent color */
       body {
         padding: 6px 8px 0;
-        font: 600 14px/1 'Segoe UI Variable Text', 'Segoe UI', sans-serif;
-        color: var(--text);
+        font: 700 13px/1 'Fira Sans', 'Segoe UI Variable Display', 'Segoe UI', sans-serif;
+        color: var(--primary);
       }
       .bar {
+        position: relative;
         display: grid;
-        /* sides never shrink below their modules; the title gets what is left (ellipsis)
-           and stays centered while both sides fit in half the bar */
-        grid-template-columns: minmax(max-content, 1fr) minmax(0, auto) minmax(max-content, 1fr);
+        grid-template-columns: minmax(0, 1fr) auto minmax(max-content, 1fr);
         align-items: center;
-        gap: 12px;
-        height: 34px;
+        gap: 16px;
+        height: 40px;
+        padding: 0 16px 0 18px;
+        border-radius: 20px;
+        isolation: isolate;
+      }
+      /* translucent glass, opaque content */
+      .bar::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        z-index: -1;
+        border-radius: inherit;
+        background: linear-gradient(180deg, rgba(var(--surface2-rgb), 0.86), rgba(var(--surface-rgb), 0.82));
+        border: 1px solid rgba(var(--text-rgb), 0.1);
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.06),
+          0 4px 18px rgba(0, 0, 0, 0.35);
       }
       .side {
         display: flex;
         align-items: center;
+        gap: 18px;
         min-width: 0;
-        height: 100%;
       }
-      /* one cluster pinned to the right edge; if it doesn't fit, its left end is clipped (never the clock) */
       .right {
-        flex-direction: row-reverse;
-        overflow: hidden;
+        justify-content: flex-end;
+        gap: 22px;
       }
-      .cluster {
+      .center {
         display: flex;
         align-items: center;
+        gap: 22px;
+      }
+      .svg {
+        display: block;
         flex: none;
       }
-      /* module box: #clock, #pulseaudio, #network, #battery, #custom-appmenu */
-      .m {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        height: 30px;
-        padding: 0 10px;
-        margin-right: 10px;
-        border-radius: 8px;
-        background: var(--surface);
-        border: 2px solid var(--secondary);
-        white-space: nowrap;
-        cursor: pointer;
-        transition: all 0.3s ease-out;
-        flex: none;
-      }
-      .m:hover {
-        background: rgba(var(--primary-rgb), 0.3);
-        border-color: var(--primary);
-      }
-      .m:empty {
-        display: none;
-      }
-      .m .ic {
-        font-size: 14px;
-      }
-      .m.muted {
-        background: var(--onPrimary);
-      }
-      .m.warn {
-        background: var(--error);
-        color: var(--onPrimary);
-        border-color: var(--error);
-      }
-      /* plain icon modules: #custom-tools, #custom-exit, #custom-notification ... */
+      /* plain accent icon / icon+text modules */
       .i {
         display: flex;
         align-items: center;
-        gap: 12px;
-        margin-right: 15px;
-        font-size: 17px;
-        cursor: pointer;
+        gap: 7px;
         flex: none;
-      }
-      .i:hover,
-      .kid:hover {
-        color: var(--primary);
-      }
-      /* waybar drawer group: hover reveals the children */
-      .drawer {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        margin-right: 15px;
-        flex: none;
-      }
-      .drawer .i {
-        margin-right: 0;
-      }
-      .drawer .kids {
-        display: flex;
-        gap: 12px;
-        max-width: 0;
-        overflow: hidden;
-        opacity: 0;
-        transition: all 0.3s ease-out;
-      }
-      .drawer:hover .kids {
-        max-width: 800px;
-        opacity: 1;
-      }
-      .kid {
-        font-size: 14px;
         white-space: nowrap;
         cursor: pointer;
+        transition:
+          color 0.2s,
+          transform 0.2s;
       }
-      .kid .ic {
-        font-size: 15px;
+      .i:hover {
+        color: var(--text);
       }
-      /* hyprland/workspaces */
+      .i:active {
+        transform: scale(0.92);
+      }
+      .i.on {
+        color: var(--onPrimary);
+        background: var(--primary);
+        border-radius: 8px;
+        padding: 3px 5px;
+        margin: -3px -5px;
+      }
+      .i[hidden] {
+        display: none;
+      }
+      /* workspaces: 1..10 as circles */
       .ws {
         display: flex;
-        min-width: 210px;
-        margin-right: 7px;
+        gap: 6px;
         flex: none;
       }
       .ws button {
-        height: 24px;
-        min-width: 24px;
-        padding: 0 6px;
-        margin: 0 3px;
-        border-radius: 8px;
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        font: 700 12px/1 'Fira Sans', 'Segoe UI Variable Display', 'Segoe UI', sans-serif;
+        color: rgba(var(--text-rgb), 0.38);
+        border: 1.5px solid rgba(var(--outline-rgb), 0.7);
+        transition: all 0.25s ease;
+      }
+      .ws button.busy {
         color: var(--text);
-        background: var(--surface);
-        border: 2px solid var(--primary);
-        font-size: 13px;
-        transition: all 0.3s ease-in-out;
+        border-color: rgba(var(--text-rgb), 0.85);
+      }
+      .ws button.shown:not(.focus) {
+        border-color: var(--primary);
       }
       .ws button.focus {
         color: var(--onPrimary);
         background: var(--primary);
-        border-radius: 12px;
-        min-width: 30px;
+        border-color: var(--primary);
       }
-      .ws button.shown:not(.focus) {
-        background: rgba(var(--primary-rgb), 0.3);
+      .ws button:not(.focus):hover {
+        background: rgba(var(--primary-rgb), 0.25);
+        color: var(--text);
       }
-      .ws button:hover {
-        background: rgba(var(--primary-rgb), 0.3);
+      /* MediaControll capsule */
+      .cap {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        height: 30px;
+        min-width: 0;
+        max-width: 300px;
+        padding: 0 12px 0 4px;
         border-radius: 15px;
+        overflow: hidden;
+        isolation: isolate;
+        color: #fff;
+        cursor: pointer;
+        border: 1px solid rgba(var(--primary-rgb), 0.35);
+        background: linear-gradient(90deg, rgba(var(--surface3-rgb), 0.95), rgba(var(--surface2-rgb), 0.95));
+        transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
       }
-      /* hyprland/window */
-      .title {
-        max-width: 30vw;
+      .cap[hidden] {
+        display: none;
+      }
+      .cap:hover {
+        transform: scale(1.03);
+      }
+      /* the blurred cover tints the capsule, like the island */
+      .cap .tint {
+        position: absolute;
+        inset: -20px;
+        z-index: -1;
+        background-size: cover;
+        background-position: center;
+        filter: blur(14px) saturate(1.4) brightness(0.55);
+        opacity: 0;
+        transition: opacity 0.4s;
+      }
+      .cap.art .tint {
+        opacity: 1;
+      }
+      .cover {
+        width: 22px;
+        height: 22px;
+        flex: none;
+        border-radius: 50%;
+        overflow: hidden;
+        display: grid;
+        place-items: center;
+        background: rgba(255, 255, 255, 0.12);
+      }
+      .cover img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      .ttl {
+        min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-        font-size: 14px;
-        font-weight: 400;
-        padding: 0 10px;
+        font-size: 13px;
       }
-      /* tray (a drawer here: Windows trays are much fuller than Linux ones) */
-      .tray {
+      /* equalizer: dancing bars while playing, three dots when paused */
+      .eq {
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        height: 12px;
+        flex: none;
+        opacity: 0.85;
+      }
+      .eq i {
+        width: 3px;
+        height: 3px;
+        border-radius: 1.5px;
+        background: currentColor;
+        transition: height 0.3s;
+      }
+      .playing .eq i {
+        animation: eq 0.6s ease-in-out infinite alternate;
+      }
+      .playing .eq i:nth-child(2) {
+        animation-duration: 0.47s;
+        animation-delay: -0.2s;
+      }
+      .playing .eq i:nth-child(3) {
+        animation-duration: 0.71s;
+        animation-delay: -0.4s;
+      }
+      @keyframes eq {
+        from {
+          height: 3px;
+        }
+        to {
+          height: 12px;
+        }
+      }
+      .wtitle {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-weight: 500;
+        color: rgba(var(--text-rgb), 0.75);
+      }
+      /* clock: time over date */
+      .clock {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2px;
+        cursor: default;
+      }
+      .clock b {
+        font-size: 16px;
+        letter-spacing: 0.3px;
+      }
+      .clock small {
+        font-size: 10px;
+        font-weight: 600;
+        opacity: 0.8;
+      }
+      /* binding mode / paused / game mode */
+      .tags {
+        display: flex;
+        gap: 6px;
+      }
+      .tags span {
+        padding: 4px 8px;
+        border-radius: 8px;
+        background: var(--error);
+        color: #1a1a1a;
+        cursor: pointer;
+      }
+      /* tray: hover to open, like a waybar drawer */
+      .drawer {
+        display: flex;
         align-items: center;
         gap: 10px;
       }
       .drawer:has(.tray:empty) {
         display: none;
       }
+      .tray {
+        display: flex;
+        gap: 10px;
+        max-width: 0;
+        overflow: hidden;
+        opacity: 0;
+        transition: all 0.3s ease-out;
+      }
+      .drawer:hover .tray {
+        max-width: 600px;
+        opacity: 1;
+      }
       .tray img {
-        width: 18px;
-        height: 18px;
+        width: 17px;
+        height: 17px;
         display: block;
         cursor: pointer;
       }
-      .song {
-        max-width: 200px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
       .logo {
-        width: 18px;
-        height: 18px;
-        border-radius: 5px;
+        width: 22px;
+        height: 22px;
+        border-radius: 6px;
+        display: grid;
+        place-items: center;
         background: var(--primary);
         color: var(--onPrimary);
         font-size: 11px;
-        display: grid;
-        place-items: center;
+        font-weight: 800;
+        letter-spacing: -0.3px;
       }
     </style>
   </head>
   <body>
     <div class="bar">
       <div class="side">
-        <div class="m" data-act="launcher" title="Left: Open the application launcher&#10;Right: Show all keybindings">Apps</div>
+        <span class="i" data-act="terminal" title="Terminal (SUPER+Enter)" id="term"></span>
         <div class="ws" id="ws"></div>
+        <div class="cap" id="cap" hidden title="Left: play/pause · Right: next · Middle: previous">
+          <span class="tint" id="capTint"></span>
+          <span class="cover" id="capCover"></span>
+          <span class="ttl" id="capTitle"></span>
+          <span class="eq"><i></i><i></i><i></i></span>
+        </div>
+        <span class="wtitle" id="title"></span>
       </div>
-      <div class="title" id="title"></div>
-      <div class="side right"><div class="cluster">
-        <div class="m" id="tags"></div>
-        <div class="m" id="media"></div>
-        <div class="m" id="vol" data-act="volume"></div>
-        <div class="m" id="net" data-act="network"></div>
-        <div class="m" id="bat" data-act="battery"></div>
-        <div class="drawer">
-          <div class="kids" id="hw"></div>
-          <i class="i ic" data-act="taskmgr" title="System">&#xE950;</i>
-        </div>
-        <div class="drawer">
-          <div class="kids">
-            <span class="kid" data-act="wallpaper" title="Wallpaper (SUPER+CTRL+W)"><i class="ic">&#xE91B;</i></span>
-            <span class="kid" data-act="keybinds" title="Keybindings (SUPER+CTRL+K)"><i class="ic">&#xE765;</i></span>
-            <span class="kid" data-act="gamemode" title="Game mode (SUPER+ALT+G)"><i class="ic">&#xE7FC;</i></span>
-            <span class="kid" data-act="animations" title="Toggle animations (SUPER+SHIFT+A)"><i class="ic">&#xE945;</i></span>
-          </div>
-          <i class="i ic" title="Tools">&#xE90F;</i>
-        </div>
-        <div class="drawer">
-          <div class="kids tray" id="tray"></div>
-          <i class="i ic" title="Tray">&#xE76B;</i>
-        </div>
-        <i class="i ic" data-act="notifications" title="Notifications">&#xEA8F;</i>
-        <i class="i ic" data-act="power" title="Open Power Menu">&#xE7E8;</i>
-        <span class="i" data-act="settings" title="MW4W Settings (SUPER+CTRL+S)"><span class="logo">MW</span></span>
-        <div class="m" id="clock" data-act="clock" style="margin-right: 0"></div>
-      </div></div>
+
+      <div class="center">
+        <span class="i" data-act="launcher" title="Left: Apps (SUPER+CTRL+Enter)&#10;Right: Keybindings" id="grid"></span>
+        <div class="clock" id="clock"><b></b><small></small></div>
+        <span class="i" data-act="notifications" title="Notifications" id="bell"></span>
+      </div>
+
+      <div class="side right">
+        <div class="tags" id="tags"></div>
+        <span class="i" data-act="timer" title="Timer" id="timer"></span>
+        <span class="i" data-act="updates" title="Updates" id="upd"></span>
+        <span class="i" data-act="gamemode" title="Game mode (SUPER+ALT+G)" id="game"></span>
+        <span class="i" data-act="volume" id="vol"></span>
+        <span class="i" data-act="network" id="net"></span>
+        <span class="i" data-act="battery" id="bat" hidden></span>
+        <div class="drawer"><div class="tray" id="tray"></div><span class="i" id="trayic" title="Tray"></span></div>
+        <span class="i" data-act="settings" title="Left: MW4W Settings (SUPER+CTRL+S)&#10;Right: Wallpaper (SUPER+CTRL+W)"><span class="logo">mw.</span></span>
+        <span class="i" data-act="power" title="Power menu (SUPER+CTRL+P)" id="pwr"></span>
+      </div>
     </div>
 
     <script type="module">
-      import { zebar, widget, send, open, openPopup as popup, settings, watchState, ic, esc } from './lib/mw4w.js';
+      import { zebar, widget, send, open, glaze as glazeCmd, openPopup as popup, settings, watchState, json, esc } from './lib/mw4w.js';
+      import { svg, volIcon, track } from './lib/icons.js';
 
       const s = await settings();
       document.body.style.paddingInline = `${s.gapsOut}px`;
+      const $ = id => document.getElementById(id);
       let state = {};
-      let altClock = false;
+
+      for (const [id, name, size] of [
+        ['term', 'terminal', 18],
+        ['grid', 'grid', 18],
+        ['bell', 'bell', 18],
+        ['timer', 'timer', 18],
+        ['game', 'rocket', 18],
+        ['trayic', 'chevron', 16],
+        ['pwr', 'power', 18],
+      ])
+        $(id).innerHTML = svg(name, size);
 
       watchState((st, changed) => {
         if (st.barHidden) return widget.close();
         if (changed) return location.reload();
         state = st;
+        $('game').classList.toggle('on', !!st.gamemode);
       });
 
       const providers = zebar.createProviderGroup({
         glazewm: { type: 'glazewm' },
-        cpu: { type: 'cpu', refreshInterval: 3000 },
-        memory: { type: 'memory', refreshInterval: 3000 },
         network: { type: 'network', refreshInterval: 5000 },
         battery: { type: 'battery', refreshInterval: 15000 },
         audio: { type: 'audio' },
-        date: { type: 'date', formatting: s.clock24h ? 'HH:mm EEE' : 'h:mm a EEE' },
-        dateLong: { type: 'date', formatting: 'EEEE, d MMMM yyyy', refreshInterval: 60000 },
+        time: { type: 'date', formatting: s.clock24h ? 'HH:mm' : 'h:mm a' },
+        day: { type: 'date', formatting: 'EEE, d MMM', refreshInterval: 60000 },
+        long: { type: 'date', formatting: 'EEEE, d MMMM yyyy', refreshInterval: 60000 },
         ...(s.showMedia ? { media: { type: 'media' } } : {}),
         ...(s.showTray ? { systray: { type: 'systray' } } : {}),
       });
 
       const set = (id, html) => {
-        const el = document.getElementById(id);
+        const el = $(id);
         if (el._html !== html) el.innerHTML = el._html = html;
       };
 
-      const wifiIcon = n => (n == null ? 'E701' : n >= 75 ? 'E701' : n >= 50 ? 'E874' : n >= 25 ? 'E873' : 'E872');
-      const volIcon = (v, m) => (m ? 'E74F' : v < 1 ? 'E992' : v < 34 ? 'E993' : v < 67 ? 'E994' : 'E995');
+      // cover art, app and volume from `mw4w.ps1 media-loop`
+      let extra = null;
+      if (s.showMedia) {
+        const poll = async () => {
+          const next = await json('cache/media.json', null);
+          if (JSON.stringify(next) !== JSON.stringify(extra)) (extra = next), render();
+        };
+        poll();
+        setInterval(poll, 1000);
+      }
+
+      // updates count (winget), refreshed every 2 hours
+      let updates = null;
+      const pollUpdates = async () => {
+        updates = await json('cache/updates.json', null);
+        if (!updates || Date.now() / 1000 - updates.at > 7200) send('updates');
+        render();
+      };
+      pollUpdates();
+      setInterval(pollUpdates, 10 * 60 * 1000);
 
       function render() {
         const o = providers.outputMap;
         const g = o.glazewm;
 
         if (g) {
-          // persistent-workspaces: 1-5 always visible
-          const shown = [...g.currentWorkspaces];
-          for (const n of ['1', '2', '3', '4', '5'])
-            if (!g.allWorkspaces.some(w => w.name === n)) shown.push({ name: n, children: [] });
-          shown.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+          // persistent workspaces 1..10, like ML4W
           set(
             'ws',
-            shown
-              .map(w => {
-                const cls = [w.hasFocus && 'focus', w.isDisplayed && 'shown'].filter(Boolean).join(' ');
-                return `<button class="${cls}" data-ws="${esc(w.name)}">${esc(w.displayName ?? w.name)}</button>`;
-              })
-              .join(''),
+            Array.from({ length: 10 }, (_, i) => {
+              const n = String(i + 1);
+              const w = g.allWorkspaces.find(w => w.name === n);
+              const cls = [w?.hasFocus && 'focus', w?.isDisplayed && 'shown', w?.children?.length && 'busy'].filter(Boolean).join(' ');
+              return `<button class="${cls}" data-ws="${n}">${n}</button>`;
+            }).join(''),
           );
-
-          const f = g.focusedContainer;
-          // hyprland/window rewrite: drop the " - App" suffix
-          set('title', f?.type === 'window' ? esc(f.title.replace(/ [-—–] [^-—–]+$/, '') || f.processName) : '');
         }
 
-        set('clock', esc(altClock ? o.dateLong?.formatted : o.date?.formatted));
+        // media capsule; the window title takes its place when nothing plays
+        const t = track(o.media?.currentSession, extra);
+        const cap = $('cap');
+        cap.hidden = !t;
+        if (t) {
+          cap.classList.toggle('playing', t.playing);
+          cap.classList.toggle('art', !!t.cover);
+          set('capTitle', esc(t.title));
+          set('capCover', t.cover ? `<img src="${esc(t.cover)}" />` : svg('music', 13));
+          const tint = t.cover ? `url("${t.cover}")` : '';
+          if ($('capTint').style.backgroundImage !== tint) $('capTint').style.backgroundImage = tint;
+        }
+        const f = g?.focusedContainer;
+        set('title', !t && f?.type === 'window' ? esc(f.title.replace(/ [-—–] [^-—–]+$/, '') || f.processName) : '');
+
+        set('clock', `<b>${esc(o.time?.formatted)}</b><small>${esc(o.day?.formatted)}</small>`);
+        $('clock').title = o.long?.formatted ?? '';
 
         let tags = '';
         if (g) {
-          for (const m of g.bindingModes) tags += `<span data-act="mode" data-mode="${esc(m.name)}">${ic('E740')} ${esc(m.displayName ?? m.name)}</span>`;
-          if (g.isPaused) tags += `<span data-act="pause">${ic('E769')} paused</span>`;
+          for (const m of g.bindingModes) tags += `<span data-act="mode" data-mode="${esc(m.name)}">${esc(m.displayName ?? m.name)}</span>`;
+          if (g.isPaused) tags += `<span data-act="pause">paused</span>`;
         }
-        if (state.gamemode) tags += `<span data-act="gamemode">${ic('E7FC')} game</span>`;
         set('tags', tags);
-        document.getElementById('tags').classList.toggle('warn', !!tags);
 
-        const m = o.media?.currentSession;
-        set(
-          'media',
-          m && m.title
-            ? `<span data-act="prev">${ic('E892')}</span><span data-act="playpause">${ic(m.isPlaying ? 'E769' : 'E768')}</span>` +
-                `<span data-act="next">${ic('E893')}</span><span class="song">${esc(m.title)}${m.artist ? ' — ' + esc(m.artist) : ''}</span>`
-            : '',
-        );
+        set('upd', svg('box', 18) + (updates?.count ? `<span>${updates.count}</span>` : ''));
+        $('upd').title = updates ? `${updates.count} updates (winget) — click to install` : 'Updates (winget)';
 
         const a = o.audio?.defaultPlaybackDevice;
-        set('vol', a ? `${ic(volIcon(a.volume, a.isMuted))} ${a.isMuted ? '' : Math.round(a.volume) + '%'}` : '');
-        const vol = document.getElementById('vol');
-        vol.classList.toggle('muted', !!a?.isMuted);
-        vol.title = a ? `${a.name} — scroll to change, right click: sound settings` : '';
+        set('vol', a ? svg(volIcon(a.volume, a.isMuted), 18) + `<span>${a.isMuted ? 'muted' : Math.round(a.volume) + '%'}</span>` : '');
+        $('vol').title = a ? `${a.name} — scroll to change, right click: sound settings` : '';
 
         const n = o.network;
         if (n) {
-          const t = n.defaultInterface?.type;
-          const icon = t === 'wifi' ? wifiIcon(n.defaultGateway?.signalStrength) : t === 'ethernet' ? 'E839' : t ? 'E774' : 'F384';
-          const label = t === 'wifi' ? `${n.defaultGateway?.signalStrength ?? ''}%` : t ? n.defaultInterface?.friendlyName ?? '' : 'Disconnected ⚠';
-          set('net', `${ic(icon)} ${esc(label)}`);
-          document.getElementById('net').title = n.defaultGateway?.ssid ?? n.defaultInterface?.friendlyName ?? '';
+          const type = n.defaultInterface?.type;
+          set('net', svg(type === 'wifi' ? 'wifi' : type ? 'lan' : 'offline', 17));
+          $('net').title =
+            type === 'wifi' ? `${n.defaultGateway?.ssid ?? ''} ${n.defaultGateway?.signalStrength ?? ''}%` : (n.defaultInterface?.friendlyName ?? 'Disconnected');
         }
 
         const b = o.battery;
+        $('bat').hidden = !b || b.state === 'unknown';
         if (b && b.state !== 'unknown') {
           const p = Math.round(b.chargePercent);
-          const icon = (b.isCharging ? 0xebab : 0xeba0) + Math.round(p / 10);
-          set('bat', `${ic(icon.toString(16))} ${p}%`);
-          document.getElementById('bat').classList.toggle('warn', p < 15 && !b.isCharging);
-        } else set('bat', '');
-
-        // group/hardware: "/ C x% / M y%"
-        set(
-          'hw',
-          (o.cpu ? `<span class="kid" data-act="taskmgr">C ${Math.round(o.cpu.usage)}%</span>` : '') +
-            (o.memory ? `<span class="kid" data-act="taskmgr">/ M ${Math.round(o.memory.usage)}%</span>` : ''),
-        );
+          set('bat', svg(b.isCharging ? 'charging' : 'battery', 18) + `<span>${p}%</span>`);
+          $('bat').style.color = p < 15 && !b.isCharging ? 'var(--error)' : '';
+        }
 
         set('tray', (o.systray?.icons ?? []).map(t => `<img src="${t.iconUrl}" title="${esc(t.tooltip)}" data-tray="${esc(t.id)}" />`).join(''));
       }
@@ -342,8 +460,41 @@
       render();
 
       const glaze = (cmd, id) => providers.outputMap.glazewm?.runCommand(cmd, id);
+      const media = () => providers.outputMap.media;
+
+      // ---- hover: the capsule opens the dynamic island (island.html) right on top of itself
+      let islandWin;
+      async function findIsland() {
+        try {
+          if (islandWin && (await islandWin.title()) === 'Zebar - mw4w / island') return islandWin;
+        } catch {}
+        for (const w of await widget.tauriWindow.constructor.getAll()) if ((await w.title()) === 'Zebar - mw4w / island') return (islandWin = w);
+        return null;
+      }
+      async function openIsland() {
+        const win = widget.tauriWindow;
+        const island = await findIsland();
+        if (!island) return zebar.startWidgetPreset('island', 'preload');
+        const [pos, size, sf] = await Promise.all([win.outerPosition(), win.outerSize(), win.scaleFactor()]);
+        const r = $('cap').getBoundingClientRect();
+        const W = 440; // island.html window: 420px island + shadow
+        const left = pos.x / sf;
+        const x = Math.round(Math.max(left, Math.min(left + size.width / sf - W, left + r.left + r.width / 2 - W / 2)));
+        const y = Math.round(pos.y / sf + 4);
+        // where the capsule is inside the island window: the island grows out of it
+        localStorage.setItem(
+          'mw4w.island',
+          JSON.stringify({ t: Date.now(), w: r.width, h: r.height, cx: left + r.left + r.width / 2 - x, top: r.top + pos.y / sf - y }),
+        );
+        await island.setPosition({ type: 'Logical', x, y });
+        await island.show();
+      }
+      let hoverTimer;
+      $('cap').addEventListener('mouseenter', () => (hoverTimer = setTimeout(openIsland, 220)));
+      $('cap').addEventListener('mouseleave', () => clearTimeout(hoverTimer));
 
       document.addEventListener('click', e => {
+        if (e.target.closest('#cap')) return media()?.togglePlayPause();
         const el = e.target.closest('[data-act],[data-ws],[data-tray]');
         if (!el) return;
         if (el.dataset.ws) return glaze(`focus --workspace ${el.dataset.ws}`);
@@ -351,32 +502,23 @@
         const o = providers.outputMap;
         switch (el.dataset.act) {
           case 'launcher':
-          case 'wallpaper':
-          case 'keybinds':
           case 'settings':
           case 'power':
             return popup(el.dataset.act);
-          case 'clock':
-            altClock = !altClock;
-            return render();
+          case 'terminal':
+            return glazeCmd(`shell-exec ${s.apps.terminal}`);
           case 'mode':
             return glaze(`wm-disable-binding-mode --name ${el.dataset.mode}`);
           case 'pause':
             return glaze('wm-toggle-pause');
           case 'gamemode':
             return send('gamemode');
-          case 'animations':
-            return send('toggle', 'animations');
           case 'notifications':
             return open('ms-actioncenter:');
-          case 'prev':
-            return o.media?.previous();
-          case 'next':
-            return o.media?.next();
-          case 'playpause':
-            return o.media?.togglePlayPause();
-          case 'taskmgr':
-            return glaze('shell-exec taskmgr');
+          case 'timer':
+            return open('ms-clock:');
+          case 'updates':
+            return send('run', btoa('winget upgrade --all'));
           case 'network':
             return open('ms-settings:network');
           case 'battery':
@@ -390,14 +532,17 @@
 
       document.addEventListener('contextmenu', e => {
         e.preventDefault();
+        if (e.target.closest('#cap')) return media()?.next();
         const el = e.target.closest('[data-tray],[data-act]');
         if (el?.dataset.tray) providers.outputMap.systray?.onRightClick(el.dataset.tray);
         else if (el?.dataset.act === 'volume') open('ms-settings:sound');
         else if (el?.dataset.act === 'launcher') popup('keybinds');
+        else if (el?.dataset.act === 'settings') popup('wallpaper');
       });
 
       document.addEventListener('auxclick', e => {
         if (e.button !== 1) return;
+        if (e.target.closest('#cap')) return media()?.previous();
         const el = e.target.closest('[data-tray]');
         if (el) providers.outputMap.systray.onMiddleClick(el.dataset.tray);
       });

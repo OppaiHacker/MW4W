@@ -5,6 +5,7 @@
 #   power <lock|logout|sleep|hibernate|reboot|shutdown>
 #   kill-active | empty-workspace | gamemode | bar-restart | bar-toggle
 #   set <base64-json> | toggle <setting> | run <base64-cmd> | launch <appid> | winicons
+#   media-loop | media-seek <seconds> | media-volume <0-100> | updates
 param([string]$Cmd = 'apply', [string]$Arg = '')
 
 $ErrorActionPreference = 'Stop'
@@ -394,6 +395,137 @@ function Update-Apps {
   if ($todo.Count) { [Mw4w.Native]::Icons([string[]]$todo, [string[]]$out, 64) | Out-Null }
 }
 
+# ---------------------------------------------------------------- media (MediaControll island)
+# Windows' MPRIS is GSMTC. Zebar's media provider has title, state and controls but no cover
+# art, seek or per-app volume, so media-loop keeps cache\media.json up to date with those.
+function Init-Media {
+  if ($script:MediaMgr) { return }
+  Add-Type -AssemblyName System.Runtime.WindowsRuntime
+  $null = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media.Control, ContentType = WindowsRuntime]
+  $null = [Windows.Storage.Streams.IRandomAccessStreamWithContentType, Windows.Storage.Streams, ContentType = WindowsRuntime]
+  $script:AsTask = [WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
+    $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1'
+  } | Select-Object -First 1
+  $script:MediaMgr = Await-WinRt ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]::RequestAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager])
+}
+
+function Await-WinRt($op, [type]$type) {
+  $task = $script:AsTask.MakeGenericMethod($type).Invoke($null, @($op))
+  if (-not $task.Wait(3000)) { throw 'WinRT call timed out' }
+  $task.Result
+}
+
+# GSMTC app id -> processes (for the audio session and the icon) and a label. Ids look like
+# 'chrome.exe', 'SpotifyAB.SpotifyMusic_zpnnbk0ga4vpm!Spotify', or a hash for Firefox-based browsers.
+function Get-MediaApp([string]$id) {
+  $procs = @(
+    if ($id -match '^(.+)\.exe$') { $Matches[1] }
+    elseif ($id -match '^([^_!]+)_[^!]*!(.+)$') { $Matches[2]; $Matches[1] -replace '^.*\.', '' }
+    elseif ($id -match '^[0-9A-Fa-f]{16}$') { 'firefox', 'zen', 'librewolf', 'floorp', 'waterfox' }
+    else { $id }
+  )
+  $run = Get-Process -Name $procs -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($run) { $procs = @($run.ProcessName) }
+  $names = @{ chrome = 'Chrome'; msedge = 'Edge'; firefox = 'Firefox'; zen = 'Zen'; brave = 'Brave'; opera = 'Opera'; spotify = 'Spotify'; vlc = 'VLC' }
+  $p = $procs[0].ToLower()
+  $label = if ($names[$p]) { $names[$p] } else { (Get-Culture).TextInfo.ToTitleCase($procs[0]) }
+  @{ procs = [string[]]$procs; name = $label; icon = "cache/icons/proc-$p.png" }
+}
+
+# The cover goes to cache\media\<hash>.img; none yet = try again next time (browsers send it late).
+function Save-Cover($thumb, [string]$key) {
+  if (-not $thumb) { return $null }
+  $dir = Join-Path $Cache 'media'
+  New-Item -ItemType Directory -Force $dir | Out-Null
+  $name = '{0:x8}.img' -f ($key.GetHashCode() -band 0x7fffffff)
+  $ras = Await-WinRt ($thumb.OpenReadAsync()) ([Windows.Storage.Streams.IRandomAccessStreamWithContentType])
+  $in = [IO.WindowsRuntimeStreamExtensions]::AsStreamForRead($ras)
+  try {
+    $fs = [IO.File]::Create((Join-Path $dir $name))
+    try { $in.CopyTo($fs) } finally { $fs.Dispose() }
+  } finally { $in.Dispose() }
+  Get-ChildItem $dir -Filter '*.img' | Where-Object Name -ne $name | Remove-Item -ErrorAction SilentlyContinue
+  "cache/media/$name"
+}
+
+function Get-MediaState {
+  Init-Media
+  $s = $script:MediaMgr.GetCurrentSession()
+  if (-not $s) { return [ordered]@{ title = $null } }
+  $p = Await-WinRt ($s.TryGetMediaPropertiesAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionMediaProperties])
+  $t = $s.GetTimelineProperties()
+  $pb = $s.GetPlaybackInfo()
+  $app = Get-MediaApp $s.SourceAppUserModelId
+  $key = "$($s.SourceAppUserModelId)|$($p.Title)|$($p.Artist)"
+  if ($key -ne $script:CoverKey) {
+    try { $script:Cover = Save-Cover $p.Thumbnail $key } catch { $script:Cover = $null }
+    if ($script:Cover) { $script:CoverKey = $key }
+  }
+  $at = $t.LastUpdatedTime.ToUnixTimeMilliseconds()
+  if ($at -le 0) { $at = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() }
+  $vol = [Mw4w.Audio]::AppVolume($app.procs, -1)
+  [ordered]@{
+    title   = $p.Title
+    artist  = $p.Artist
+    album   = $p.AlbumTitle
+    app     = $app.name
+    icon    = $app.icon
+    cover   = $(if ($script:CoverKey -eq $key) { $script:Cover })
+    playing = ("$($pb.PlaybackStatus)" -eq 'Playing')
+    canSeek = [bool]$pb.Controls.IsPlaybackPositionEnabled
+    pos     = [Math]::Round(($t.Position - $t.StartTime).TotalSeconds, 1)
+    len     = [Math]::Round(($t.EndTime - $t.StartTime).TotalSeconds, 1)
+    at      = $at
+    vol     = $(if ($vol -ge 0) { $vol })
+  }
+}
+
+function Media-Loop {
+  $mutex = New-Object Threading.Mutex($false, 'Local\mw4w-media')
+  if (-not $mutex.WaitOne(0)) { return }  # one loop is enough
+  Load-Native; Init-Media
+  $path = Join-Path $Cache 'media.json'
+  $last = $null; $gone = 0
+  # ends ~10s after Zebar does (the bar restart only takes it away for a moment)
+  while ($gone -lt 15) {
+    $gone = if (Get-Process zebar -ErrorAction SilentlyContinue) { 0 } else { $gone + 1 }
+    try {
+      $j = Get-MediaState | ConvertTo-Json -Compress
+      if ($j -ne $last) { Write-Utf8 $path $j; $last = $j }
+    } catch { }
+    Start-Sleep -Milliseconds 700
+  }
+}
+
+function Media-Seek([double]$sec) {
+  Init-Media
+  $s = $script:MediaMgr.GetCurrentSession()
+  if (-not $s) { return }
+  $ticks = $s.GetTimelineProperties().StartTime.Ticks + [long]($sec * 1e7)
+  Await-WinRt ($s.TryChangePlaybackPositionAsync($ticks)) ([bool]) | Out-Null
+}
+
+function Media-Volume([int]$v) {
+  Load-Native; Init-Media
+  $s = $script:MediaMgr.GetCurrentSession()
+  if ($s) { [Mw4w.Audio]::AppVolume((Get-MediaApp $s.SourceAppUserModelId).procs, [Math]::Max(0, [Math]::Min(100, $v))) | Out-Null }
+}
+
+# Package updates for the bar (ML4W's updates module): `winget upgrade` rows -> cache\updates.json.
+function Update-Updates {
+  if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { return }
+  [Console]::OutputEncoding = [Text.Encoding]::UTF8
+  $rows = 0; $table = $false
+  foreach ($l in (& winget upgrade --accept-source-agreements --disable-interactivity 2>$null)) {
+    if ($l -match '-{20,}') { $table = $true; continue }
+    if (-not $table) { continue }
+    # a row has (at least) the installed and the available version; the footer has one number at most
+    if ($l -notmatch '\s\S*\d+(\.\d+)+\S*\s+\S*\d+(\.\d+)+') { break }
+    $rows++
+  }
+  Save-Json (Join-Path $Cache 'updates.json') ([ordered]@{ count = $rows; at = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() })
+}
+
 # ---------------------------------------------------------------- misc
 function Kill-Active([long]$hwnd = 0) {
   Load-Native
@@ -449,6 +581,7 @@ function Set-Settings([string]$b64) {
   Save-Json $path $u
   # the dock closes itself when off; turning it on has to start it again
   if ($patch.dock -eq $true) { & $Zebar start-widget-preset --pack mw4w --widget-name dock --preset default }
+  if ($patch.showMedia -eq $true) { Start-Self 'media-loop' }
   # only the slow steps this patch needs (a toggle shouldn't recolor or restart winmask)
   $keys = @($patch.PSObject.Properties.Name)
   if ($keys -contains 'hideTaskbar') { Sync-Taskbar }
@@ -485,6 +618,8 @@ function Startup {
   Sync-Taskbar
   $st = Get-State; $st.barHidden = $false; $st.autoPid = $null; Save-State $st
   if (-not (Test-Path (Join-Path $Pack 'colors.css'))) { Update-Colors | Out-Null; Update-Glaze }
+  if ((Get-Settings).showMedia) { Start-Self 'media-loop' }
+  Start-Self 'updates-now'
   Update-Thumbs
   Update-Apps
 }
@@ -508,6 +643,11 @@ function Invoke-Mw4w([string]$Cmd, [string]$Arg) {
     'set' { Set-Settings $Arg }
     'toggle' { $v = -not (Get-Settings).$Arg; Set-Settings ([Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes((@{ $Arg = $v } | ConvertTo-Json)))) }
     'winicons' { Update-WinIcons }
+    'media-loop' { Media-Loop }
+    'media-seek' { Media-Seek ([double]::Parse($Arg, [Globalization.CultureInfo]::InvariantCulture)) }
+    'media-volume' { Media-Volume ([int]$Arg) }
+    'updates' { Start-Self 'updates-now' }  # winget takes seconds: not in the warm worker
+    'updates-now' { Update-Updates }
     'run' { Start-Self 'run-now', $Arg }
     'run-now' { Start-Process cmd.exe ('/c start "" ' + [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($Arg))) -WindowStyle Hidden }
     'launch' { Start-Process explorer.exe "shell:AppsFolder\$Arg" }
