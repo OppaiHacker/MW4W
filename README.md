@@ -39,7 +39,7 @@ powershell -ExecutionPolicy Bypass -File install.ps1
 ```
 
 `MW4W-Setup.exe` takes the same flags, plus `--uninstall`. Build it with `installer/build.sh [version]`
-(needs Go; a `v*` tag builds it in CI and attaches it to the release).
+(needs Go). CI builds it on every push and publishes it as release `v<VERSION>`; bump `VERSION` for a new release.
 
 The installer:
 

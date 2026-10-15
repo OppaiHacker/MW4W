@@ -1,8 +1,10 @@
-# Tag vX.Y.Z -> GitHub release with dist/MW4W-Setup.exe
+# Builds dist/MW4W-Setup.exe and publishes it as release v<VERSION> (the tag is
+# created by the release). Pushing again with the same VERSION updates that release.
 name: release
 
 on:
   push:
+    branches: [main, 'claude/**']
     tags: ['v*']
   workflow_dispatch:
 
@@ -17,15 +19,25 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.22'
+      - name: Version
+        id: v
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = tag ]; then v="${GITHUB_REF_NAME}"; else v="v$(cat VERSION)"; fi
+          echo "tag=$v" >> "$GITHUB_OUTPUT"
       - name: Build the installer
-        run: ./installer/build.sh "${GITHUB_REF_NAME}"
+        run: ./installer/build.sh "${{ steps.v.outputs.tag }}"
       - uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
         with:
+          tag_name: ${{ steps.v.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: MW4W ${{ steps.v.outputs.tag }}
           files: dist/MW4W-Setup.exe
-          generate_release_notes: true
+          make_latest: true
           body: |
-            **MW4W-Setup.exe** — download and run. It installs GlazeWM and Zebar (winget) if missing, the MW4W widget pack, wallpapers and colors, and starts everything.
+            **MW4W-Setup.exe**: download and run. It installs GlazeWM and Zebar (winget) if missing, the MW4W widget pack, wallpapers and colors, and starts everything.
 
-            Options: `MW4W-Setup.exe -NoStart -KeepWallpaper`, uninstall: `MW4W-Setup.exe --uninstall`.
+            - ML4W Quickshell-style bar and dock with liquid glass
+            - MediaControll capsule and dynamic island (cover, seek, controls, per-app volume)
+
+            Options: `MW4W-Setup.exe -NoStart -KeepWallpaper`; uninstall: `MW4W-Setup.exe --uninstall`.
             The exe isn't code-signed, so SmartScreen may ask: *More info → Run anyway*.
