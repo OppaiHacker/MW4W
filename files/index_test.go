@@ -24,6 +24,7 @@ func TestIndexSearch(t *testing.T) {
 
 	ix, err := openIndex(data)
 	must(err)
+	t.Cleanup(func() { ix.r.Close(); ix.w.Close() })
 	ix.cfg.Roots = []string{root}
 	go ix.writer()
 	ix.fullScan()
@@ -61,6 +62,7 @@ func TestIndexSearch(t *testing.T) {
 	// a change: the folder is read again and the gone file leaves the index
 	must(os.Remove(filepath.Join(root, "src", "glass", "liquid.js")))
 	ix.changed([]string{filepath.Join(root, "src", "glass")})
+	ix.flush()
 	deadline = time.Now().Add(5 * time.Second)
 	for len(names("liquid", false)) != 0 && time.Now().Before(deadline) {
 		time.Sleep(50 * time.Millisecond)

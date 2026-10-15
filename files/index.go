@@ -182,9 +182,8 @@ func (ix *Index) fullScan() {
 		ix.scanTree([]string{filepath.Clean(r)})
 	}
 	if ix.bulk.Load() {
-		done := make(chan struct{})
-		ix.jobs <- func(tx *sql.Tx) { tx.Exec(`INSERT INTO names(names) VALUES('rebuild')`); close(done) }
-		<-done
+		ix.jobs <- func(tx *sql.Tx) { tx.Exec(`INSERT INTO names(names) VALUES('rebuild')`) }
+		ix.flush() // committed before searches use it
 		ix.bulk.Store(false)
 	}
 	ix.lastRun.Store(time.Now().Unix())
@@ -256,6 +255,16 @@ func (ix *Index) scanTree(dirs []string) {
 
 type dirGone string
 
+// barrier is closed by the writer once everything queued before it is committed.
+type barrier chan struct{}
+
+// flush waits until the writer has committed every job queued so far.
+func (ix *Index) flush() {
+	b := make(barrier)
+	ix.jobs <- b
+	<-b
+}
+
 // changed: folders the watcher saw change. Each is read again; new subfolders are scanned whole.
 func (ix *Index) changed(dirs []string) {
 	for _, d := range dirs {
@@ -311,6 +320,7 @@ func (ix *Index) writer() {
 		st := newStmts(tx)
 		deadline := time.Now().Add(300 * time.Millisecond)
 		var found []func()
+		var barriers []barrier
 		job := first
 		changed := false
 		for {
@@ -335,6 +345,8 @@ func (ix *Index) writer() {
 				st.bodyVer.Exec(j.id, j.size, j.mtime)
 			case func(*sql.Tx):
 				j(tx)
+			case barrier:
+				barriers = append(barriers, j)
 			}
 			if time.Now().After(deadline) {
 				break
@@ -348,6 +360,9 @@ func (ix *Index) writer() {
 		}
 		st.close()
 		tx.Commit()
+		for _, b := range barriers {
+			close(b)
+		}
 		for _, f := range found {
 			f()
 		}
@@ -526,10 +541,7 @@ func (ix *Index) contentLoop() {
 			if len(jobs) < 400 {
 				break
 			}
-			// wait for the writer, so the next query sees these as done
-			done := make(chan struct{})
-			ix.jobs <- func(*sql.Tx) { close(done) }
-			<-done
+			ix.flush() // the next query must see these as done
 		}
 	}
 }

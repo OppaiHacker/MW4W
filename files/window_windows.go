@@ -22,6 +22,7 @@ import (
 	"unsafe"
 
 	"github.com/jchv/go-webview2/pkg/edge"
+	"github.com/jchv/go-webview2/webviewloader"
 	"golang.org/x/sys/windows"
 )
 
@@ -109,8 +110,13 @@ var (
 
 func runUI(a *App, path string, show bool) {
 	runtime.LockOSThread()
+	// WebView2 needs a COM single-threaded apartment on the thread that owns the windows
+	windows.CoInitializeEx(0, windows.COINIT_APARTMENTTHREADED|windows.COINIT_DISABLE_OLE1DDE)
 	app = a
 	uiThread = windows.GetCurrentThreadId()
+	if v, err := webviewloader.GetInstalledVersion(); err != nil || v == "" {
+		noRuntime()
+	}
 	procSetProcessDpiAwareCtx.Call(^uintptr(3)) // PER_MONITOR_AWARE_V2 (-4)
 	// transparent until the page paints (no white flash) and behind it (the acrylic shows through)
 	os.Setenv("WEBVIEW2_DEFAULT_BACKGROUND_COLOR", "00000000")
@@ -170,6 +176,17 @@ func runUI(a *App, path string, show bool) {
 		procTranslateMessage.Call(uintptr(unsafe.Pointer(&msg)))
 		procDispatchMessageW.Call(uintptr(unsafe.Pointer(&msg)))
 	}
+}
+
+// noRuntime: without the WebView2 Runtime (Windows 11 has it) there are no windows; say so instead of crashing.
+func noRuntime() {
+	msg, _ := windows.UTF16PtrFromString("MW4W Files needs the Microsoft Edge WebView2 Runtime.\n\nOpen the download page?")
+	title, _ := windows.UTF16PtrFromString("MW4W Files")
+	const mbYesNo, mbIconInfo, idYes = 0x4, 0x40, 6
+	if r, _, _ := user32.NewProc("MessageBoxW").Call(0, uintptr(unsafe.Pointer(msg)), uintptr(unsafe.Pointer(title)), mbYesNo|mbIconInfo); r == idYes {
+		shellOpen("https://developer.microsoft.com/microsoft-edge/webview2/")
+	}
+	os.Exit(1)
 }
 
 // post runs f on the UI thread.
