@@ -399,24 +399,27 @@ function paint() {
     first = Math.max(0, Math.floor(top / geom.rh) - 6);
     last = Math.min(n, Math.ceil((top + h) / geom.rh) + 6);
   }
+  // rows that scrolled out are refilled for the ones scrolling in (no create/remove per frame)
+  const spare = [];
   for (const [i, el] of pool) {
     if (i < first || i >= last) {
-      el.remove();
+      spare.push(el);
       pool.delete(i);
     }
   }
   const frag = document.createDocumentFragment();
   const need = [];
   for (let i = first; i < last; i++) {
-    let el = pool.get(i);
-    if (!el) {
-      el = grid ? makeCell(i) : makeRow(i);
+    if (!pool.has(i)) {
+      const old = spare.pop();
+      const el = grid ? makeCell(i, old) : makeRow(i, old);
       pool.set(i, el);
-      frag.appendChild(el);
+      if (!old) frag.appendChild(el);
     }
     const it = S.view[i];
     if (it.dir && !S.counts.has(it.path) && S.mode !== 'trash') need.push(it.path);
   }
+  for (const el of spare) el.remove();
   rowsEl.appendChild(frag);
   if (need.length) wantCounts(need);
 }
@@ -442,9 +445,8 @@ function rowClasses(it, i) {
   return (S.sel.has(it.path) ? ' sel' : '') + (i === S.focus ? ' focus' : '') + (it.hidden ? ' hid' : '') + (S.cut.has(it.path) ? ' cut' : '');
 }
 
-function makeRow(i) {
+function makeRow(i, el = document.createElement('div')) {
   const it = S.view[i];
-  const el = document.createElement('div');
   el.className = 'row' + rowClasses(it, i);
   el.dataset.i = i;
   el.draggable = true;
@@ -460,9 +462,8 @@ function makeRow(i) {
   return el;
 }
 
-function makeCell(i) {
+function makeCell(i, el = document.createElement('div')) {
   const it = S.view[i];
-  const el = document.createElement('div');
   el.className = 'cell' + rowClasses(it, i);
   el.dataset.i = i;
   el.draggable = true;

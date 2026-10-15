@@ -129,7 +129,8 @@ How it is fast:
   window already loaded, so SUPER+E only shows it: no process or WebView start. Closing a window keeps it as the spare.
 - The index scans with low-priority threads (background mode: no CPU/disk competition), and the first scan fills the
   name index in one rebuild (10× faster than row by row). Measured here: 87,000 files indexed in 1.4 s; a name search
-  over them takes 0.4–10 ms, a content search ~1–2 ms, opening a folder ~13 ms.
+  over them takes 0.4–10 ms (a one-letter query ~60 ms), a content search ~1–2 ms, opening a folder ~13 ms; a folder of
+  50,000 files opens in ~150 ms, sorts in ~20 ms and scrolls at 60 fps (its files are stat'ed on all cores).
 - Folders render virtually (only visible rows exist), hovering a folder prefetches it, item counts load for visible rows only,
   and a listing is one hand-written JSON array.
 

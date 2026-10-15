@@ -801,33 +801,56 @@ func (ix *Index) setMeta(k, v string) {
 // ---------------------------------------------------------------- listing
 
 // readDir lists a folder: name, kind, size, mtime, hidden. Links are resolved to say what they point at.
+// Big folders stat their entries on all cores (Windows has them from the enumeration already).
 func readDir(dir string) ([]entry, error) {
 	des, err := os.ReadDir(dir)
 	if err != nil && len(des) == 0 {
 		return nil, err
 	}
-	out := make([]entry, 0, len(des))
-	for _, de := range des {
-		fi, err := de.Info()
-		if err != nil {
-			continue
-		}
-		e := entry{name: de.Name(), dir: de.IsDir(), size: fi.Size(), mtime: fi.ModTime().Unix(), hidden: isHidden(de.Name(), fi)}
-		if t := de.Type(); t&(fs.ModeSymlink|fs.ModeIrregular) != 0 {
-			e.link = true
-			if st, err := os.Stat(filepath.Join(dir, de.Name())); err == nil {
-				e.dir = st.IsDir()
-				if !e.dir {
-					e.size = st.Size()
+	out := make([]entry, len(des))
+	ok := make([]bool, len(des))
+	fill := func(lo, hi int) {
+		for i := lo; i < hi; i++ {
+			de := des[i]
+			fi, err := de.Info()
+			if err != nil {
+				continue
+			}
+			e := entry{name: de.Name(), dir: de.IsDir(), size: fi.Size(), mtime: fi.ModTime().Unix(), hidden: isHidden(de.Name(), fi)}
+			if t := de.Type(); t&(fs.ModeSymlink|fs.ModeIrregular) != 0 {
+				e.link = true
+				if st, err := os.Stat(filepath.Join(dir, de.Name())); err == nil {
+					e.dir = st.IsDir()
+					if !e.dir {
+						e.size = st.Size()
+					}
 				}
 			}
+			if e.dir {
+				e.size = 0
+			}
+			out[i], ok[i] = e, true
 		}
-		if e.dir {
-			e.size = 0
-		}
-		out = append(out, e)
 	}
-	return out, nil
+	if n := len(des); n < 2048 {
+		fill(0, n)
+	} else {
+		var wg sync.WaitGroup
+		step := (n + runtime.NumCPU() - 1) / runtime.NumCPU()
+		for lo := 0; lo < n; lo += step {
+			wg.Add(1)
+			go func(lo, hi int) { defer wg.Done(); fill(lo, hi) }(lo, min(lo+step, n))
+		}
+		wg.Wait()
+	}
+	j := 0
+	for i := range out {
+		if ok[i] {
+			out[j] = out[i]
+			j++
+		}
+	}
+	return out[:j], nil
 }
 
 func under(p, root string) bool {
