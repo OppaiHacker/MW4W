@@ -1,6 +1,7 @@
 # MW4W - installer.
-#   powershell -ExecutionPolicy Bypass -File install.ps1 [-NoStart] [-KeepWallpaper]
-param([switch]$NoStart, [switch]$KeepWallpaper)
+#   powershell -ExecutionPolicy Bypass -File install.ps1 [-NoStart] [-KeepWallpaper] [-ReplaceExplorer]
+#   -ReplaceExplorer: MW4W becomes the Windows shell instead of explorer.exe (from the next sign-in)
+param([switch]$NoStart, [switch]$KeepWallpaper, [switch]$ReplaceExplorer)
 
 $ErrorActionPreference = 'Stop'
 $Repo = $PSScriptRoot
@@ -91,6 +92,11 @@ if ($KeepWallpaper -or $hasWallpaper) { & powershell -NoProfile -ExecutionPolicy
 else { & powershell -NoProfile -ExecutionPolicy Bypass -File $mw4w wallpaper (Join-Path $Walls 'mw4w-aurora.jpg') }
 if ($LASTEXITCODE) { throw 'mw4w.ps1 failed, see cache\error.log' }
 & powershell -NoProfile -ExecutionPolicy Bypass -File $mw4w thumbs
+
+if ($ReplaceExplorer) {
+  Step 'MW4W replaces explorer.exe as the shell (next sign-in)'
+  & powershell -NoProfile -ExecutionPolicy Bypass -File $mw4w shell on
+}
 
 Step 'Autostart (GlazeWM starts Zebar + helpers)'
 Set-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' 'MW4W-GlazeWM' "`"$GlazeExe`""

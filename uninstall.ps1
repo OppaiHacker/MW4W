@@ -4,13 +4,17 @@ $ErrorActionPreference = 'Continue'
 $Glzr = Join-Path $env:USERPROFILE '.glzr'
 $Pack = Join-Path $Glzr 'zebar\mw4w'
 
+# Explorer is the shell again from the next sign-in (and mw4w-shell starts it when GlazeWM exits below).
+$wl = 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Winlogon'
+if ((Get-ItemProperty $wl -ErrorAction SilentlyContinue).Shell -like '*mw4w-shell*') { Remove-ItemProperty $wl Shell }
+
 # GlazeWM runs elevated (Stop-Process gets access denied), so ask it to exit.
 $cli = Join-Path $env:ProgramFiles 'glzr.io\GlazeWM\cli\glazewm.exe'
 if (Get-Process glazewm -ErrorAction SilentlyContinue) { & $cli command wm-exit | Out-Null; Start-Sleep -Seconds 2 }
 # winmask --exit shows the hidden taskbar again (GlazeWM's shutdown_commands do the same).
 $wm = Join-Path $Pack 'bin\winmask.exe'
 if (Test-Path $wm) { & $wm --exit; Start-Sleep -Milliseconds 500 }
-Get-Process zebar, winmask -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process zebar, winmask, mw4w-shell -ErrorAction SilentlyContinue | Stop-Process -Force
 Remove-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' 'MW4W-GlazeWM' -ErrorAction SilentlyContinue
 
 # Show the taskbar again.

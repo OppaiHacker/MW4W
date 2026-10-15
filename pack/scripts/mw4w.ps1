@@ -5,7 +5,7 @@
 #   power <lock|logout|sleep|hibernate|reboot|shutdown>
 #   kill-active | empty-workspace | gamemode | bar-restart | bar-toggle
 #   set <base64-json> | toggle <setting> | run <base64-cmd> | launch <appid> | winicons
-#   media-loop | media-seek <seconds> | media-volume <0-100> | updates
+#   media-loop | media-seek <seconds> | media-volume <0-100> | updates | shell <on|off>
 param([string]$Cmd = 'apply', [string]$Arg = '')
 
 $ErrorActionPreference = 'Stop'
@@ -426,6 +426,7 @@ function Await-WinRt($op, [type]$type) {
 # GSMTC app id -> processes (for the audio session and the icon) and a label. Ids look like
 # 'chrome.exe', 'SpotifyAB.SpotifyMusic_zpnnbk0ga4vpm!Spotify', or a hash for Firefox-based browsers.
 function Get-MediaApp([string]$id) {
+  if ($script:AppCache -and $script:AppCache.id -eq $id -and (Get-Process -Id $script:AppCache.pid -ErrorAction SilentlyContinue)) { return $script:AppCache.app }
   $procs = @(
     if ($id -match '^(.+)\.exe$') { $Matches[1] }
     elseif ($id -match '^([^_!]+)_[^!]*!(.+)$') { $Matches[2]; $Matches[1] -replace '^.*\.', '' }
@@ -434,10 +435,13 @@ function Get-MediaApp([string]$id) {
   )
   $run = Get-Process -Name $procs -ErrorAction SilentlyContinue | Select-Object -First 1
   if ($run) { $procs = @($run.ProcessName) }
+  $script:AppCache = $null
   $names = @{ chrome = 'Chrome'; msedge = 'Edge'; firefox = 'Firefox'; zen = 'Zen'; brave = 'Brave'; opera = 'Opera'; spotify = 'Spotify'; vlc = 'VLC' }
   $p = $procs[0].ToLower()
   $label = if ($names[$p]) { $names[$p] } else { (Get-Culture).TextInfo.ToTitleCase($procs[0]) }
-  @{ procs = [string[]]$procs; name = $label; icon = "cache/icons/proc-$p.png" }
+  $app = @{ procs = [string[]]$procs; name = $label; icon = "cache/icons/proc-$p.png" }
+  if ($run) { $script:AppCache = @{ id = $id; pid = $run.Id; app = $app } }
+  $app
 }
 
 # The cover goes to cache\media\<hash>.img; none yet = try again next time (browsers send it late).
@@ -493,15 +497,20 @@ function Media-Loop {
   if (-not $mutex.WaitOne(0)) { return }  # one loop is enough
   Load-Native; Init-Media
   $path = Join-Path $Cache 'media.json'
-  $last = $null; $gone = 0
+  $last = $null; $gone = 0; $i = 0
   # ends ~10s after Zebar does (the bar restart only takes it away for a moment)
-  while ($gone -lt 15) {
-    $gone = if (Get-Process zebar -ErrorAction SilentlyContinue) { 0 } else { $gone + 1 }
+  while ($gone -lt 3) {
+    # every ~3.5s is enough to notice Zebar is gone
+    if (($i++ % 5) -eq 0) { $gone = if (Get-Process zebar -ErrorAction SilentlyContinue) { 0 } else { $gone + 1 } }
+    $idle = $true
     try {
-      $j = Get-MediaState | ConvertTo-Json -Compress
+      $m = Get-MediaState
+      $idle = -not $m.playing
+      $j = $m | ConvertTo-Json -Compress
       if ($j -ne $last) { Write-Utf8 $path $j; $last = $j }
     } catch { }
-    Start-Sleep -Milliseconds 700
+    # paused or nothing playing: the bar extrapolates nothing, a slower poll is fine
+    Start-Sleep -Milliseconds $(if ($idle) { 1400 } else { 700 })
   }
 }
 
@@ -593,6 +602,7 @@ function Set-Settings([string]$b64) {
   # only the slow steps this patch needs (a toggle shouldn't recolor or restart winmask)
   $keys = @($patch.PSObject.Properties.Name)
   if ($keys -contains 'hideTaskbar') { Sync-Taskbar }
+  if ($keys -contains 'replaceExplorer') { Sync-Shell ([bool]$patch.replaceExplorer) }
   if ($keys -contains 'dynamicColors' -or $keys -contains 'accent') { Update-Colors | Out-Null }
   Apply
 }
@@ -607,6 +617,15 @@ function Sync-Taskbar {
   if ([Mw4w.Native]::TaskbarIsAutoHide() -ne $want) { [Mw4w.Native]::TaskbarAutoHide($want) }
   # restart winmask through GlazeWM so it keeps GlazeWM's integrity level (it kills the old one)
   Glaze 'shell-exec', (Winmask-Cmd $s)
+}
+
+# MW4W instead of Explorer: Winlogon starts bin\mw4w-shell.exe at sign-in (it runs the startup
+# apps and GlazeWM, and falls back to Explorer when GlazeWM can't run). Takes effect at the next sign-in.
+$WinlogonKey = 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Winlogon'
+function Sync-Shell([bool]$on) {
+  $exe = Join-Path $Pack 'bin\mw4w-shell.exe'
+  if ($on -and (Test-Path $exe)) { Set-ItemProperty $WinlogonKey Shell $exe }
+  elseif ((Get-ItemProperty $WinlogonKey -ErrorAction SilentlyContinue).Shell -like '*mw4w-shell*') { Remove-ItemProperty $WinlogonKey Shell }
 }
 
 # Icons for the bar's taskbar module: cache\icons\proc-<process>.png
@@ -658,7 +677,8 @@ function Invoke-Mw4w([string]$Cmd, [string]$Arg) {
     'updates-now' { Update-Updates }
     'run' { Start-Self 'run-now', $Arg }
     'run-now' { Start-Process cmd.exe ('/c start "" ' + [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($Arg))) -WindowStyle Hidden }
-    'launch' { Start-Process explorer.exe "shell:AppsFolder\$Arg" }
+    'launch' { Start-Process "shell:AppsFolder\$Arg" }  # ShellExecute, no explorer.exe needed (MW4W may be the shell)
+    'shell' { Set-Settings ([Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes((@{ replaceExplorer = ($Arg -eq 'on') } | ConvertTo-Json)))) }
     'selftest' {
       $s = Get-Settings
       $checks = @(
