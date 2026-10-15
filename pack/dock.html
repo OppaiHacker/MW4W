@@ -5,8 +5,8 @@
     <link rel="stylesheet" href="colors.css" />
     <link rel="stylesheet" href="lib/base.css" />
     <style>
-      /* ml4w-dock (Quickshell, ML4W OS) defaults: iconSize 32, spacing 8, marginBottom 16,
-         pill radius 16 / padding 12, 2px primary->onPrimary border, opacity 0.7 */
+      /* ML4W dock: dark glass pill, icon size 36, running dot / focused bar under the icon.
+         Pill: 16px from the screen edge, 66px tall (GlazeWM's bottom gap counts on that). */
       :root {
         --ease: cubic-bezier(0.22, 1, 0.36, 1); /* Easing.OutQuint */
       }
@@ -21,13 +21,14 @@
         position: relative;
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 10px;
         height: 66px;
-        padding: 0 12px;
+        padding: 0 14px;
         isolation: isolate;
         animation: reveal 350ms var(--ease);
       }
-      .pill[hidden] {
+      .pill[hidden],
+      .pill:has(#apps:empty) {
         display: none;
       }
       @keyframes reveal {
@@ -35,24 +36,16 @@
           transform: translateY(90px);
         }
       }
-      /* background only is translucent, icons stay opaque */
-      .pill::before {
-        content: '';
-        position: absolute;
-        inset: 0;
-        z-index: -1;
-        border-radius: 16px;
-        border: 2px solid transparent;
-        background:
-          linear-gradient(var(--surface), var(--surface)) padding-box,
-          linear-gradient(var(--primary), var(--onPrimary)) border-box;
-        box-shadow: 0 0 15px rgba(0, 0, 0, 0.4);
-        opacity: 0.7;
+      /* liquid glass (lib/glass.js) over the wallpaper; this is the fallback until it loads */
+      .pill {
+        border-radius: 22px;
+        background: rgba(var(--surface-rgb), 0.55);
+        box-shadow: 0 6px 22px rgba(0, 0, 0, 0.4);
       }
       button {
         position: relative;
-        width: 48px;
-        height: 50px;
+        width: 52px;
+        height: 56px;
         display: grid;
         place-items: center;
       }
@@ -60,15 +53,16 @@
       button::before {
         content: '';
         position: absolute;
-        width: 46px;
-        height: 46px;
-        border-radius: 50%;
+        width: 48px;
+        height: 48px;
+        top: 0;
+        border-radius: 14px;
         background: var(--primary);
         opacity: 0;
         transition: opacity 300ms var(--ease);
       }
       button:hover::before {
-        opacity: 0.25;
+        opacity: 0.18;
       }
       button > :first-child {
         position: relative;
@@ -77,17 +71,20 @@
       button:hover > :first-child {
         transform: scale(1.12);
       }
+      button > :first-child {
+        margin-bottom: 8px;
+      }
       img,
       .av {
-        width: 32px;
-        height: 32px;
+        width: 36px;
+        height: 36px;
         display: block;
       }
       .av {
         border-radius: 8px;
         background: var(--primary);
         color: var(--onPrimary);
-        font: 600 16px/32px 'Segoe UI', sans-serif;
+        font: 600 17px/36px 'Segoe UI', sans-serif;
         text-align: center;
       }
       /* running indicator, stretches for the focused app */
@@ -95,44 +92,27 @@
         position: absolute;
         bottom: 0;
         left: 50%;
-        width: 4px;
-        height: 4px;
-        border-radius: 2px;
+        width: 5px;
+        height: 5px;
+        border-radius: 3px;
         background: var(--primary);
+        opacity: 0.85;
         transform: translateX(-50%);
         transition: width 350ms var(--ease);
       }
       .active .ind {
-        width: 14px;
-      }
-      /* launcher: 3x3 dots */
-      .dots {
-        display: grid;
-        grid-template-columns: repeat(3, 5px);
-        gap: 6px;
-      }
-      .dots i {
-        width: 5px;
-        height: 5px;
-        border-radius: 50%;
-        background: var(--primary);
-      }
-      .sep {
-        width: 1px;
-        height: 24px;
-        margin-bottom: 4px;
-        background: var(--primary);
+        width: 20px;
+        opacity: 1;
       }
     </style>
   </head>
   <body>
     <div class="pill" id="dock" hidden>
-      <button data-act="launcher" title="Apps"><span class="dots"></span></button>
-      <div class="sep"></div>
       <div id="apps" style="display: contents"></div>
     </div>
     <script type="module">
-      import { zebar, widget, send, openPopup, settings, watchState, esc } from './lib/mw4w.js';
+      import { zebar, widget, send, settings, watchState, esc } from './lib/mw4w.js';
+      import { liquidGlass, wallpaperPlace } from './lib/glass.js';
 
       if (!(await settings()).dock) widget.close();
 
@@ -140,7 +120,9 @@
       const glaze = (cmd, id) => providers.outputMap.glazewm?.runCommand(cmd, id);
       const dock = document.getElementById('dock');
       const apps = document.getElementById('apps');
-      document.querySelector('.dots').innerHTML = '<i></i>'.repeat(9);
+      liquidGlass(dock, { place: wallpaperPlace('bottom'), radius: 22, bezel: 14, strength: 11, tint: 'rgba(var(--surface-rgb), 0.38)' }).setSource(
+        `cache/glass.jpg?v=${Date.now()}`,
+      );
 
       watchState((st, changed) => {
         if (changed) return location.reload();
@@ -189,7 +171,6 @@
       const appOf = e => groups.get(e.target.closest('[data-app]')?.dataset.app);
 
       document.addEventListener('click', e => {
-        if (e.target.closest('[data-act="launcher"]')) return openPopup('launcher');
         const ws = appOf(e);
         if (!ws) return;
         // click cycles through the app's windows

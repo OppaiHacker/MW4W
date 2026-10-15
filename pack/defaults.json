@@ -18,7 +18,7 @@
   "animations": true,
   "hideTaskbar": true,
   "clock24h": true,
-  "showMedia": false,
+  "showMedia": true,
   "showTray": true,
   "dock": true,
   "wallpaperAutoMinutes": 15

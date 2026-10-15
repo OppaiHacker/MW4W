@@ -1,0 +1,581 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <script>/* preloaded popup: paint nothing until the page has hidden the window */ (window.__ZEBAR_STATE ?? JSON.parse(sessionStorage.getItem('ZEBAR_STATE') ?? '{}')).openOptions?.preset === 'preload' && document.documentElement.classList.add('preload');</script>
+    <link rel="stylesheet" href="colors.css" />
+    <link rel="stylesheet" href="lib/base.css" />
+    <style>
+      /* MediaControll's dynamic island: the bar capsule springs open into a 420x222 liquid-glass panel.
+         This window is 440x252: the island plus room for its shadow. */
+      :root {
+        --spring: cubic-bezier(0.34, 1.36, 0.5, 1);
+        --font-ui: 'Fira Sans', 'Segoe UI Variable Display', 'Segoe UI', sans-serif;
+      }
+      body {
+        font: 600 13px/1.2 var(--font-ui);
+        color: #fff;
+      }
+      .card {
+        position: absolute;
+        left: 10px;
+        top: 0;
+        width: 420px;
+        height: 222px;
+        border-radius: 34px;
+        overflow: hidden;
+        isolation: isolate;
+        box-shadow: 0 12px 28px rgba(0, 0, 0, 0.55);
+        transition:
+          left 0.46s var(--spring),
+          top 0.46s var(--spring),
+          width 0.46s var(--spring),
+          height 0.5s var(--spring),
+          border-radius 0.46s var(--spring),
+          opacity 0.12s;
+      }
+      .card.collapsed {
+        opacity: 0;
+        transition:
+          left 0.26s ease-in,
+          top 0.26s ease-in,
+          width 0.26s ease-in,
+          height 0.26s ease-in,
+          border-radius 0.26s ease-in,
+          opacity 0.22s 0.06s;
+      }
+      .card.instant,
+      .card.instant .content {
+        transition: none !important;
+      }
+      /* liquid glass (lib/glass.js) over the blurred cover; no cover: the accent */
+      .card {
+        background: linear-gradient(160deg, rgba(var(--primary-rgb), 0.5), rgba(var(--surface-rgb), 0.96) 70%);
+      }
+      .collapsed .lg {
+        filter: none !important;
+      }
+      .content {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 420px;
+        height: 222px;
+        padding: 16px 22px 14px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        transition: opacity 0.25s 0.12s;
+      }
+      .collapsed .content {
+        opacity: 0;
+        transition: opacity 0.1s;
+      }
+      .top {
+        display: flex;
+        gap: 14px;
+        align-items: center;
+      }
+      .art {
+        width: 76px;
+        height: 76px;
+        flex: none;
+        border-radius: 16px;
+        overflow: hidden;
+        display: grid;
+        place-items: center;
+        background: rgba(255, 255, 255, 0.08);
+        color: rgba(255, 255, 255, 0.7);
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+        transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+      }
+      .paused .art {
+        transform: scale(0.9);
+      }
+      .art img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      .meta {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+      }
+      .app {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        color: rgba(255, 255, 255, 0.6);
+      }
+      .app img {
+        width: 13px;
+        height: 13px;
+      }
+      .title {
+        overflow: hidden;
+        white-space: nowrap;
+        font-size: 17px;
+        font-weight: 700;
+      }
+      .title span {
+        display: inline-block;
+      }
+      .title.marquee span {
+        animation: marquee var(--dur) ease-in-out infinite;
+      }
+      @keyframes marquee {
+        0%,
+        25% {
+          transform: none;
+        }
+        55%,
+        75% {
+          transform: translateX(var(--dx));
+        }
+        100% {
+          transform: none;
+        }
+      }
+      .artist {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 13px;
+        font-weight: 500;
+        color: rgba(255, 255, 255, 0.72);
+      }
+      .eq {
+        align-self: flex-start;
+        display: flex;
+        align-items: flex-end;
+        gap: 3px;
+        height: 18px;
+        margin-top: 2px;
+        color: var(--primary);
+      }
+      .eq i {
+        width: 3px;
+        height: 5px;
+        border-radius: 1.5px;
+        background: currentColor;
+      }
+      .playing .eq i {
+        animation: eq 0.55s ease-in-out infinite alternate;
+      }
+      .playing .eq i:nth-child(2) {
+        animation-duration: 0.42s;
+        animation-delay: -0.15s;
+      }
+      .playing .eq i:nth-child(3) {
+        animation-duration: 0.66s;
+        animation-delay: -0.3s;
+      }
+      .playing .eq i:nth-child(4) {
+        animation-duration: 0.5s;
+        animation-delay: -0.45s;
+      }
+      @keyframes eq {
+        to {
+          height: 18px;
+        }
+      }
+      /* seek / volume rows */
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        height: 18px;
+        font-size: 11px;
+        color: rgba(255, 255, 255, 0.65);
+      }
+      .row > .lbl {
+        width: 38px;
+        flex: none;
+      }
+      .row > .lbl.r {
+        text-align: right;
+      }
+      .track {
+        position: relative;
+        flex: 1;
+        height: 18px;
+        cursor: pointer;
+      }
+      .track.off {
+        cursor: default;
+      }
+      .track::before,
+      .track .fill {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 50%;
+        height: 5px;
+        border-radius: 3px;
+        transform: translateY(-50%);
+        transition:
+          height 0.16s ease-out,
+          width 0.4s cubic-bezier(0.33, 1, 0.68, 1);
+      }
+      .track::before {
+        right: 0;
+        background: rgba(255, 255, 255, 0.22);
+      }
+      .track .fill {
+        min-width: 5px;
+        background: #fff;
+      }
+      .track.vol .fill {
+        background: var(--primary);
+      }
+      .track:not(.off):hover::before,
+      .track:not(.off):hover .fill,
+      .track.drag::before,
+      .track.drag .fill {
+        height: 8px;
+      }
+      .track.drag .fill {
+        transition: height 0.16s;
+      }
+      .ctrls {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 34px;
+      }
+      .ctrls button {
+        display: grid;
+        place-items: center;
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        color: #fff;
+        transition:
+          transform 0.22s cubic-bezier(0.34, 2.2, 0.64, 1),
+          background 0.18s;
+      }
+      .ctrls button:hover {
+        transform: scale(1.12);
+        background: rgba(255, 255, 255, 0.1);
+      }
+      .ctrls button:active {
+        transform: scale(0.9);
+      }
+      .ctrls .pp {
+        width: 46px;
+        height: 46px;
+        background: rgba(255, 255, 255, 0.92);
+        color: #000;
+      }
+      .ctrls .pp:hover {
+        background: #fff;
+      }
+      .volic {
+        width: 38px;
+        flex: none;
+        cursor: pointer;
+        color: rgba(255, 255, 255, 0.7);
+      }
+      .volic:hover {
+        color: #fff;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card collapsed" id="card">
+      <div class="content">
+        <div class="top">
+          <div class="art" id="art"></div>
+          <div class="meta">
+            <div class="app" id="app"></div>
+            <div class="title" id="title"><span></span></div>
+            <div class="artist" id="artist"></div>
+          </div>
+          <div class="eq"><i></i><i></i><i></i><i></i></div>
+        </div>
+        <div class="row">
+          <span class="lbl" id="pos">0:00</span>
+          <div class="track" id="seek"><div class="fill"></div></div>
+          <span class="lbl r" id="len">0:00</span>
+        </div>
+        <div class="ctrls">
+          <button data-act="prev" title="Previous"></button>
+          <button data-act="toggle" class="pp" title="Play / pause"></button>
+          <button data-act="next" title="Next"></button>
+        </div>
+        <div class="row">
+          <span class="volic" id="volic" title="Mute"></span>
+          <div class="track vol" id="vol"><div class="fill"></div></div>
+          <span class="lbl r" id="volpct">0%</span>
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      import { zebar, widget, preloaded, json, send, watchState, esc } from './lib/mw4w.js';
+      import { svg, volIcon, fmt, track } from './lib/icons.js';
+      import { liquidGlass } from './lib/glass.js';
+
+      const win = widget.tauriWindow;
+      const $ = id => document.getElementById(id);
+      const card = $('card');
+      // MediaControll's island: bezel 18, strength 14, the cover 1.4x behind it
+      const glass = liquidGlass(card, {
+        size: { w: 420, h: 222 },
+        place: () => ({ left: -84, top: -44, width: 588, height: 311 }),
+        radius: 34,
+        bezel: 18,
+        strength: 14,
+        blur: 26,
+        tint: 'linear-gradient(rgba(0,0,0,0.28), rgba(0,0,0,0.5))',
+        specular: 0.7,
+      });
+      document.querySelector('[data-act=prev]').innerHTML = svg('prev', 18);
+      document.querySelector('[data-act=next]').innerHTML = svg('next', 18);
+
+      // started hidden with Zebar: hide as soon as Zebar has shown the window
+      if (preloaded)
+        (async () => {
+          for (let i = 0; i < 100; i++, await new Promise(r => setTimeout(r, 50))) if (await win.isVisible()) break;
+          await win.hide();
+          document.documentElement.classList.remove('preload');
+        })();
+
+      watchState(async (_, changed) => {
+        if (!changed) return;
+        if (!(await win.isVisible())) return location.reload();
+        for (const l of document.querySelectorAll('link[href^="colors.css"]')) l.href = `colors.css?t=${Date.now()}`;
+      });
+
+      const providers = zebar.createProviderGroup({ media: { type: 'media' }, audio: { type: 'audio' } });
+
+      // ---- data
+      let extra = null;
+      let seekHold = null; // optimistic {pos, at} after a seek, until media-loop catches up
+      let volHold = null; // optimistic {vol, at} while / after dragging the volume
+      let lastVol = 50;
+
+      async function poll() {
+        extra = await json('cache/media.json', null);
+        if (seekHold && extra?.at > seekHold.at) seekHold = null;
+        render();
+      }
+
+      function current() {
+        const t = track(providers.outputMap.media?.currentSession, extra);
+        if (!t) return null;
+        if (seekHold && Date.now() - seekHold.at < 4000) t.pos = seekHold.pos + (t.playing ? (Date.now() - seekHold.at) / 1000 : 0);
+        // the player's own audio session if it has one, else the default device (like MediaControll)
+        const dev = providers.outputMap.audio?.defaultPlaybackDevice;
+        t.appVol = t.vol != null;
+        if (!t.appVol) t.vol = dev ? (dev.isMuted ? 0 : dev.volume) : null;
+        if (volHold && Date.now() - volHold.at < 2500) t.vol = volHold.vol;
+        return t;
+      }
+
+      // ---- render
+      let shownCover;
+      let shownTitle;
+      function render() {
+        const t = current();
+        if (!t) return opened && close();
+        card.classList.toggle('playing', t.playing);
+        card.classList.toggle('paused', !t.playing);
+
+        if (t.cover !== shownCover) {
+          shownCover = t.cover;
+          glass.setSource(t.cover);
+          if (t.cover) {
+            $('art').innerHTML = `<img src="${esc(t.cover)}" alt="" />`;
+          } else $('art').innerHTML = svg('music', 30);
+        }
+
+        const app = t.app ? `${t.icon ? `<img src="${esc(t.icon)}" alt="" onerror="this.remove()" />` : ''}${esc(t.app)}` : 'Now playing';
+        if ($('app')._html !== app) $('app').innerHTML = $('app')._html = app;
+        if (t.title !== shownTitle) {
+          shownTitle = t.title;
+          $('title').firstElementChild.textContent = t.title;
+          requestAnimationFrame(marquee);
+        }
+        $('artist').textContent = t.artist;
+
+        $('pos').textContent = fmt(t.pos);
+        $('len').textContent = t.len ? fmt(t.len) : '--:--';
+        const seek = $('seek');
+        seek.classList.toggle('off', !t.canSeek);
+        if (!seek.classList.contains('drag')) seek.firstElementChild.style.width = `${t.len ? (100 * t.pos) / t.len : 0}%`;
+
+        const pp = document.querySelector('.pp');
+        const ppIcon = t.playing ? 'pause' : 'play';
+        if (pp._icon !== ppIcon) (pp._icon = ppIcon), (pp.innerHTML = svg(ppIcon, 20));
+
+        const v = t.vol ?? 0;
+        if (!$('vol').classList.contains('drag')) $('vol').firstElementChild.style.width = `${v}%`;
+        $('volpct').textContent = t.vol == null ? '' : `${Math.round(v)}%`;
+        const vi = volIcon(v, false);
+        if ($('volic')._icon !== vi) ($('volic')._icon = vi), ($('volic').innerHTML = svg(vi, 16));
+        $('vol').title = t.appVol ? `${t.app} volume` : 'System volume';
+      }
+
+      // a long title scrolls back and forth (MediaControll's marquee)
+      function marquee() {
+        const box = $('title');
+        const over = box.firstElementChild.scrollWidth - box.clientWidth;
+        box.classList.toggle('marquee', over > 0);
+        box.style.setProperty('--dx', `${-over}px`);
+        box.style.setProperty('--dur', `${Math.max(5, (over * 56) / 1000 + 4)}s`);
+      }
+
+      providers.onOutput(() => opened && render());
+
+      // ---- open / close
+      let opened = false;
+      let ticker;
+      let leaveTimer;
+
+      function anchor() {
+        try {
+          return JSON.parse(localStorage.getItem('mw4w.island')) ?? {};
+        } catch {
+          return {};
+        }
+      }
+
+      // back into the capsule (where the bar said it is)
+      function collapse() {
+        const a = anchor();
+        const w = a.w ?? 260;
+        const h = a.h ?? 30;
+        Object.assign(card.style, {
+          left: `${(a.cx ?? 220) - w / 2}px`,
+          top: `${a.top ?? 7}px`,
+          width: `${w}px`,
+          height: `${h}px`,
+          borderRadius: `${h / 2}px`,
+        });
+        card.classList.add('collapsed');
+      }
+
+      function expand() {
+        if (opened) return;
+        opened = true;
+        clearTimeout(leaveTimer);
+        card.classList.add('instant');
+        collapse();
+        void card.offsetWidth; // start from the capsule, then spring open
+        card.classList.remove('instant', 'collapsed');
+        Object.assign(card.style, { left: '10px', top: '0px', width: '420px', height: '222px', borderRadius: '34px' });
+        poll();
+        render();
+        requestAnimationFrame(marquee);
+        ticker = setInterval(() => (render(), (tick = (tick + 1) % 2) || poll()), 250);
+      }
+      let tick = 0;
+
+      function close() {
+        if (!opened) return;
+        opened = false;
+        clearInterval(ticker);
+        collapse();
+        setTimeout(() => !opened && win.hide(), 280);
+      }
+
+      // the bar shows this window under the cursor: the first mouse move opens it
+      addEventListener('mousemove', expand);
+      addEventListener('storage', e => e.key === 'mw4w.island' && expand());
+      card.addEventListener('mouseenter', () => clearTimeout(leaveTimer));
+      card.addEventListener('mouseleave', () => {
+        if (document.querySelector('.drag')) return;
+        leaveTimer = setTimeout(close, 160);
+      });
+      // never sit invisible on top of the bar: a shown but unopened window hides itself
+      let stale = 0;
+      setInterval(async () => {
+        if (opened || !(await win.isVisible())) return (stale = 0);
+        if (++stale >= 3) (stale = 0), win.hide();
+      }, 500);
+
+      // ---- controls
+      const media = () => providers.outputMap.media;
+      document.querySelector('.ctrls').addEventListener('click', e => {
+        const act = e.target.closest('button')?.dataset.act;
+        if (act === 'prev') media()?.previous();
+        else if (act === 'next') media()?.next();
+        else if (act === 'toggle') media()?.togglePlayPause();
+      });
+
+      function setVolume(v, final) {
+        v = Math.round(Math.max(0, Math.min(100, v)));
+        volHold = { vol: v, at: Date.now() };
+        $('vol').firstElementChild.style.width = `${v}%`;
+        $('volpct').textContent = `${v}%`;
+        const t = current();
+        if (t?.appVol) {
+          // one winmask hop per change: throttle while dragging
+          clearTimeout(setVolume.t);
+          const go = () => ((setVolume.last = Date.now()), send('media-volume', v));
+          if (final || Date.now() - (setVolume.last ?? 0) > 200) go();
+          else setVolume.t = setTimeout(go, 200);
+        } else providers.outputMap.audio?.setVolume(v);
+      }
+
+      // drag on a track: fn(fraction, final)
+      function draggable(el, fn) {
+        const frac = e => {
+          const r = el.getBoundingClientRect();
+          return Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+        };
+        el.addEventListener('pointerdown', e => {
+          if (el.classList.contains('off')) return;
+          el.setPointerCapture(e.pointerId);
+          el.classList.add('drag');
+          fn(frac(e), false);
+        });
+        el.addEventListener('pointermove', e => el.classList.contains('drag') && fn(frac(e), false));
+        el.addEventListener('pointerup', e => {
+          if (!el.classList.contains('drag')) return;
+          el.classList.remove('drag');
+          fn(frac(e), true);
+        });
+      }
+
+      draggable($('seek'), (f, final) => {
+        const t = current();
+        if (!t?.len) return;
+        $('seek').firstElementChild.style.width = `${f * 100}%`;
+        $('pos').textContent = fmt(f * t.len);
+        if (!final) return;
+        seekHold = { pos: f * t.len, at: Date.now() };
+        send('media-seek', (f * t.len).toFixed(1));
+      });
+
+      draggable($('vol'), (f, final) => setVolume(f * 100, final));
+
+      $('volic').addEventListener('click', () => {
+        const v = current()?.vol ?? 0;
+        if (v > 0) (lastVol = v), setVolume(0, true);
+        else setVolume(lastVol || 50, true);
+      });
+
+      // scroll anywhere on the island: volume
+      addEventListener(
+        'wheel',
+        e => {
+          const t = current();
+          if (t?.vol != null) setVolume(t.vol + (e.deltaY < 0 ? 5 : -5), true);
+        },
+        { passive: true },
+      );
+
+      addEventListener('keydown', e => {
+        if (e.key === 'Escape') close();
+        else if (e.key === 'Enter' || e.key === ' ') media()?.togglePlayPause();
+      });
+      addEventListener('contextmenu', e => e.preventDefault());
+    </script>
+  </body>
+</html>
