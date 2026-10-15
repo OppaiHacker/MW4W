@@ -3,3 +3,5 @@ pack/cache/
 pack/colors.css
 pack/settings.json
 *.bak-*
+installer/payload/
+dist/

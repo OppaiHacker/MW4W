@@ -31,9 +31,15 @@ Turn it off with *Media player module* in settings.
 
 ## Install
 
+Download **MW4W-Setup.exe** from [Releases](https://github.com/OppaiHacker/MW4W/releases/latest) and run it
+(it isn't code-signed, so SmartScreen may ask: *More info → Run anyway*). Or from a clone:
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File install.ps1
 ```
+
+`MW4W-Setup.exe` takes the same flags, plus `--uninstall`. Build it with `installer/build.sh [version]`
+(needs Go; a `v*` tag builds it in CI and attaches it to the release).
 
 The installer:
 
@@ -93,6 +99,7 @@ pack/                     -> ~/.glzr/zebar/mw4w
   bin/winmask.exe         SUPER doesn't open Start (CTRL+Esc does), SUPER+mouse, workspace slide, hides the taskbar,
                           handles popup keybindings, @mw4w and shell-exec itself (see Speed)
   lib/                    zebar.js (bundled, works offline), shared JS/CSS, icons.js (line icons, media helpers)
+installer/                MW4W-Setup.exe: the repo in one exe that runs install.ps1 (build.sh builds it)
 helper/                   winmask source (go build -trimpath -ldflags "-H windowsgui -s -w" -o ../pack/bin/winmask.exe)
 wallpapers/               7 wallpapers
 ```
