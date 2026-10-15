@@ -71,9 +71,14 @@ export async function settings() {
   return { ...d, ...u, apps: { ...d.apps, ...(u?.apps ?? {}) } };
 }
 
-/** Polls cache/state.json; calls cb(state, changed) on every stamp change. */
+/**
+ * Polls cache/state.json; calls cb(state, changed) on every stamp change.
+ * Every 1.5s while the widget is on screen, every 6s while it is hidden (six preloaded popups
+ * would otherwise read the file every 250ms between them), and at once when it shows again.
+ */
 export function watchState(cb) {
   let last;
+  let n = 0;
   const tick = async () => {
     const st = await json('cache/state.json', {});
     if (st.stamp !== last) {
@@ -83,7 +88,8 @@ export function watchState(cb) {
     }
   };
   tick();
-  setInterval(tick, 1500);
+  setInterval(() => (!document.hidden || ++n % 4 === 0) && tick(), 1500);
+  document.addEventListener('visibilitychange', () => !document.hidden && tick());
 }
 
 /**

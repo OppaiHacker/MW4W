@@ -1,6 +1,7 @@
 # MW4W - installer.
-#   powershell -ExecutionPolicy Bypass -File install.ps1 [-NoStart] [-KeepWallpaper]
-param([switch]$NoStart, [switch]$KeepWallpaper)
+#   powershell -ExecutionPolicy Bypass -File install.ps1 [-NoStart] [-KeepWallpaper] [-ReplaceExplorer]
+#   -ReplaceExplorer: MW4W becomes the Windows shell instead of explorer.exe (from the next sign-in)
+param([switch]$NoStart, [switch]$KeepWallpaper, [switch]$ReplaceExplorer)
 
 $ErrorActionPreference = 'Stop'
 $Repo = $PSScriptRoot
@@ -60,7 +61,7 @@ if ($cur -and (Test-Path $cur) -and -not $cur.StartsWith($Walls, 'OrdinalIgnoreC
 Step 'Zebar: start the MW4W bar on launch'
 $zs = Join-Path $Glzr 'zebar\settings.json'
 # Popups start hidden ("preload") so they open instantly later.
-$popups = foreach ($w in 'launcher', 'power', 'wallpaper', 'keybinds', 'settings', 'island') { @{ pack = 'mw4w'; widget = $w; preset = 'preload' } }
+$popups = foreach ($w in 'launcher', 'power', 'wallpaper', 'keybinds', 'settings', 'island', 'quick') { @{ pack = 'mw4w'; widget = $w; preset = 'preload' } }
 Write-Utf8 $zs (@{
     '$schema'      = 'https://github.com/glzr-io/zebar/raw/v3.3.1/resources/settings-schema.json'
     startupConfigs = @(@{ pack = 'mw4w'; widget = 'bar'; preset = 'default' }, @{ pack = 'mw4w'; widget = 'dock'; preset = 'default' }) + $popups
@@ -91,6 +92,11 @@ if ($KeepWallpaper -or $hasWallpaper) { & powershell -NoProfile -ExecutionPolicy
 else { & powershell -NoProfile -ExecutionPolicy Bypass -File $mw4w wallpaper (Join-Path $Walls 'mw4w-aurora.jpg') }
 if ($LASTEXITCODE) { throw 'mw4w.ps1 failed, see cache\error.log' }
 & powershell -NoProfile -ExecutionPolicy Bypass -File $mw4w thumbs
+
+if ($ReplaceExplorer) {
+  Step 'MW4W replaces explorer.exe as the shell (next sign-in)'
+  & powershell -NoProfile -ExecutionPolicy Bypass -File $mw4w shell on
+}
 
 Step 'Autostart (GlazeWM starts Zebar + helpers)'
 Set-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' 'MW4W-GlazeWM' "`"$GlazeExe`""

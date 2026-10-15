@@ -34,40 +34,61 @@ function bake(w, h, { radius, bezel, specular }) {
   const lx = -0.55 / Math.hypot(0.55, 0.85);
   const ly = -0.85 / Math.hypot(0.55, 0.85);
 
-  const pixels = (cw, ch, scale, fn) => {
+  // Only the bezel band needs the SDF's gradient: the flat middle and the outside are one
+  // value (`fill`), which keeps a 4K-wide bar to a few ms instead of ~100.
+  const band = Math.max(bezel, 2.5) + 1;
+  const pixels = (cw, ch, scale, fill, fn) => {
     const c = document.createElement('canvas');
     c.width = cw;
     c.height = ch;
     const ctx = c.getContext('2d');
     const img = ctx.createImageData(cw, ch);
-    for (let j = 0; j < ch; j++)
+    const px = img.data;
+    new Uint32Array(px.buffer).fill(fill);
+    for (let j = 0; j < ch; j++) {
+      const y = (j + 0.5) / scale - hy;
+      // rows clear of the top/bottom bezel: only the ends near the left/right edges matter
+      const inner = Math.abs(y) < hy - Math.max(r, band);
+      // along the straight top/bottom edge a pixel only depends on y: work out one, copy the rest
+      const flatX = hx - Math.max(r, band) - 2;
+      let copyFrom = -1;
       for (let i = 0; i < cw; i++) {
         const x = (i + 0.5) / scale - hx;
-        const y = (j + 0.5) / scale - hy;
+        if (inner && Math.abs(x) < hx - band) {
+          i = Math.max(i, Math.floor((2 * hx - band) * scale - 1) - 1);
+          continue;
+        }
+        if (Math.abs(x) < flatX) {
+          const o = (j * cw + i) * 4;
+          if (copyFrom >= 0) px.copyWithin(o, copyFrom, copyFrom + 4);
+          else copyFrom = o;
+          if (copyFrom !== o) continue;
+        }
         const d = sd(x, y);
+        if (d < -band || d > 1) continue;
         let nx = sd(x + 1, y) - sd(x - 1, y);
         let ny = sd(x, y + 1) - sd(x, y - 1);
         const nl = Math.hypot(nx, ny) || 1;
         nx /= nl;
         ny /= nl;
-        fn(img.data, (j * cw + i) * 4, d, nx, ny);
+        fn(px, (j * cw + i) * 4, d, nx, ny);
       }
+    }
     ctx.putImageData(img, 0, 0);
     return c.toDataURL();
   };
 
   // 0 in the flat middle, 1 at the edge; cubic so the lens curls at the rim
-  const map = pixels(Math.ceil(w), Math.ceil(h), 1, (px, o, d, nx, ny) => {
+  const flat = new Uint8ClampedArray([128, 128, 128, 255]);
+  const map = pixels(Math.ceil(w), Math.ceil(h), 1, new Uint32Array(flat.buffer)[0], (px, o, d, nx, ny) => {
     const t = d > 0 ? 0 : Math.min(1, Math.max(0, 1 + d / bezel));
     const bend = t * t * t; // sample inwards: base - n * bend
     px[o] = Math.round(255 * (0.5 - (nx * bend) / 2));
     px[o + 1] = Math.round(255 * (0.5 - (ny * bend) / 2));
-    px[o + 2] = 128;
-    px[o + 3] = 255;
   });
 
   const dpr = Math.min(2, devicePixelRatio || 1);
-  const light = pixels(Math.ceil(w * dpr), Math.ceil(h * dpr), dpr, (px, o, d, nx, ny) => {
+  const light = pixels(Math.ceil(w * dpr), Math.ceil(h * dpr), dpr, 0, (px, o, d, nx, ny) => {
     if (d > 0.5) return;
     const t = Math.min(1, Math.max(0, 1 + d / bezel));
     const rim = 1 - Math.min(1, Math.max(0, -d / 2.5));

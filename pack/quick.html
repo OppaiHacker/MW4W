@@ -1,0 +1,682 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <script>/* preloaded popup: paint nothing until mw4w.js has hidden the window */ (window.__ZEBAR_STATE ?? JSON.parse(sessionStorage.getItem('ZEBAR_STATE') ?? '{}')).openOptions?.preset === 'preload' && document.documentElement.classList.add('preload');</script>
+    <link rel="stylesheet" href="colors.css" />
+    <link rel="stylesheet" href="lib/base.css" />
+    <style>
+      /* Quick panels under the bar's icons (ML4W's waybar popups): sound, network, battery, calendar.
+         The window is 380px wide and as tall as the panel (setSize), so it never covers more than it shows. */
+      html.preload body {
+        visibility: hidden;
+      }
+      body {
+        padding: 6px 10px 22px;
+      }
+      .panel {
+        position: relative;
+        isolation: isolate;
+        overflow: hidden;
+        width: 360px;
+        padding: 16px;
+        border: 0;
+        border-radius: 22px;
+        background: none;
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+        animation: drop 0.24s cubic-bezier(0.34, 1.36, 0.5, 1);
+        transform-origin: var(--ox, 50%) 0;
+      }
+      @keyframes drop {
+        from {
+          opacity: 0;
+          transform: translateY(-8px) scale(0.96);
+        }
+      }
+      h1 {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 15px;
+        margin-bottom: 12px;
+      }
+      h1 .grow {
+        flex: 1;
+      }
+      h2 {
+        font-size: 11px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--textDim);
+        margin: 14px 0 6px;
+      }
+      .svg {
+        flex: none;
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-height: 38px;
+        padding: 6px 10px;
+        border-radius: 12px;
+      }
+      .row.click {
+        cursor: pointer;
+      }
+      .row.click:hover {
+        background: rgba(var(--text-rgb), 0.07);
+      }
+      .row.sel {
+        background: rgba(var(--primary-rgb), 0.18);
+        color: var(--primary);
+      }
+      .row .name {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .row small {
+        color: var(--textDim);
+        font-weight: 500;
+      }
+      .row img {
+        width: 20px;
+        height: 20px;
+      }
+      .list {
+        max-height: 260px;
+        overflow-y: auto;
+        margin: 0 -6px;
+        padding: 0 6px;
+      }
+      .list::-webkit-scrollbar {
+        width: 6px;
+      }
+      .list::-webkit-scrollbar-thumb {
+        background: rgba(var(--text-rgb), 0.2);
+        border-radius: 3px;
+      }
+      /* round icon buttons + toggles */
+      .ib {
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        flex: none;
+        background: rgba(var(--text-rgb), 0.08);
+        transition: background 0.15s;
+      }
+      .ib:hover {
+        background: rgba(var(--text-rgb), 0.16);
+      }
+      .ib.on {
+        background: var(--primary);
+        color: var(--onPrimary);
+      }
+      .tiles {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      .tile {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        height: 52px;
+        padding: 0 14px;
+        border-radius: 16px;
+        background: rgba(var(--text-rgb), 0.08);
+        text-align: left;
+        transition: background 0.15s;
+      }
+      .tile:hover {
+        background: rgba(var(--text-rgb), 0.14);
+      }
+      .tile.on {
+        background: var(--primary);
+        color: var(--onPrimary);
+      }
+      .tile span {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+      }
+      .tile small {
+        font-weight: 500;
+        opacity: 0.8;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      /* sliders: a fat Material 3 track */
+      input[type='range'] {
+        -webkit-appearance: none;
+        appearance: none;
+        flex: 1;
+        min-width: 0;
+        height: 26px;
+        border-radius: 13px;
+        background: linear-gradient(90deg, var(--primary) var(--v, 50%), rgba(var(--text-rgb), 0.12) var(--v, 50%));
+        cursor: pointer;
+        overflow: hidden;
+      }
+      input[type='range'].dim {
+        background: linear-gradient(90deg, rgba(var(--text-rgb), 0.35) var(--v, 50%), rgba(var(--text-rgb), 0.12) var(--v, 50%));
+      }
+      input[type='range']::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 6px;
+        height: 26px;
+        border-radius: 3px;
+        background: transparent;
+      }
+      .val {
+        width: 36px;
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+        color: var(--textDim);
+      }
+      .seg {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 4px;
+        padding: 4px;
+        border-radius: 14px;
+        background: rgba(var(--text-rgb), 0.08);
+      }
+      .seg button {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        padding: 8px 4px;
+        border-radius: 10px;
+        font-size: 11px;
+      }
+      .seg button.on {
+        background: var(--primary);
+        color: var(--onPrimary);
+      }
+      .foot {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 12px;
+      }
+      .link {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 10px;
+        border-radius: 10px;
+        color: var(--textDim);
+      }
+      .link:hover {
+        background: rgba(var(--text-rgb), 0.08);
+        color: var(--text);
+      }
+      .pw {
+        display: flex;
+        gap: 8px;
+        padding: 4px 10px 8px 40px;
+      }
+      .pw input {
+        flex: 1;
+        min-width: 0;
+        height: 32px;
+        padding: 0 10px;
+        border-radius: 10px;
+        border: 1px solid rgba(var(--outline-rgb), 0.8);
+        background: rgba(var(--surface-rgb), 0.6);
+        outline: none;
+      }
+      .pw input:focus {
+        border-color: var(--primary);
+      }
+      .btn {
+        padding: 0 14px;
+        height: 32px;
+        border-radius: 10px;
+        background: var(--primary);
+        color: var(--onPrimary);
+      }
+      .note {
+        padding: 8px 10px;
+        color: var(--textDim);
+        font-weight: 500;
+        line-height: 1.4;
+      }
+      .note a {
+        color: var(--primary);
+        cursor: pointer;
+      }
+      .spin {
+        animation: spin 0.9s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      .big {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        margin-bottom: 4px;
+      }
+      .big b {
+        font-size: 34px;
+        font-weight: 700;
+      }
+      .big small {
+        display: block;
+        color: var(--textDim);
+        font-weight: 500;
+        margin-top: 2px;
+      }
+      .meter {
+        height: 10px;
+        border-radius: 5px;
+        background: rgba(var(--text-rgb), 0.12);
+        overflow: hidden;
+        margin: 8px 0 4px;
+      }
+      .meter i {
+        display: block;
+        height: 100%;
+        border-radius: 5px;
+        background: var(--primary);
+      }
+      .facts {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px 14px;
+        margin-top: 10px;
+        color: var(--textDim);
+        font-weight: 500;
+      }
+      .facts b {
+        color: var(--text);
+        font-weight: 600;
+        float: right;
+      }
+      /* calendar */
+      .cal {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 2px;
+        text-align: center;
+      }
+      .cal span {
+        height: 38px;
+        display: grid;
+        place-items: center;
+        border-radius: 50%;
+        font-variant-numeric: tabular-nums;
+      }
+      .cal span:not(.wd) {
+        width: 38px;
+        justify-self: center;
+      }
+      .mix {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+      .mix small {
+        text-transform: capitalize;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .mix input[type='range'] {
+        flex: none;
+        height: 18px;
+      }
+      .cal .wd {
+        height: 26px;
+        color: var(--textDim);
+        font-size: 11px;
+      }
+      .cal .out {
+        opacity: 0.3;
+      }
+      .cal .today {
+        background: var(--primary);
+        color: var(--onPrimary);
+      }
+      .cal .we {
+        color: var(--secondary);
+      }
+      .now {
+        font-size: 30px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+      }
+      .now + small {
+        display: block;
+        color: var(--textDim);
+        font-weight: 500;
+        margin: 2px 0 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="panel" id="panel"></div>
+    <script type="module">
+      import { zebar, widget, send, open, json, popup, settings, b64, esc } from './lib/mw4w.js';
+      import { svg, volIcon, wifiBars } from './lib/icons.js';
+      import { liquidGlass } from './lib/glass.js';
+
+      const win = widget.tauriWindow;
+      const s = await settings();
+      const $panel = document.getElementById('panel');
+      const providers = zebar.createProviderGroup({
+        audio: { type: 'audio' },
+        network: { type: 'network', refreshInterval: 2000 },
+        battery: { type: 'battery', refreshInterval: 5000 },
+      });
+
+      // where the bar put this window (screen, logical px) and which panel it asked for
+      let spec = { panel: 'audio', x: 0, y: 0, ox: 180 };
+      const readSpec = () => {
+        try {
+          spec = { ...spec, ...JSON.parse(localStorage.getItem('mw4w.quick') ?? '{}') };
+        } catch {}
+      };
+      readSpec();
+
+      const glass = liquidGlass($panel, {
+        place: r => ({ left: -(spec.x + r.left) - 60, top: -(spec.y + r.top) - 60, width: screen.width + 120, height: screen.height + 120 }),
+        radius: 22,
+        bezel: 14,
+        strength: 10,
+        tint: 'rgba(var(--surface-rgb), 0.62)',
+      });
+      glass.setSource(`cache/glass.jpg?v=${Date.now()}`);
+
+      let quick = {};
+      let wifi = null;
+      let pwFor = null; // ssid whose password field is open
+      let month = 0; // calendar: months from now
+
+      const close = popup({
+        onHide() {
+          localStorage.setItem('mw4w.quick.closed', JSON.stringify({ panel: spec.panel, t: Date.now() }));
+          pwFor = null;
+          month = 0;
+          clearInterval(ticker);
+        },
+      });
+
+      // ---- data from mw4w.ps1 (quick / wifi-scan) while open
+      let ticker;
+      // a click shows its result at once; the files catch up a moment later (hold = keep ours till then)
+      let holdQuick = 0;
+      let holdWifi = 0;
+      async function refresh() {
+        const [q, w] = await Promise.all([json('cache/quick.json', quick), spec.panel === 'network' ? json('cache/wifi.json', wifi) : wifi]);
+        if (Date.now() > holdQuick) quick = q ?? {};
+        if (Date.now() > holdWifi || w?.at !== wifi?.at) wifi = w;
+        render();
+      }
+      let lastOpen = 0;
+      function opened() {
+        if (Date.now() - lastOpen < 300) return; // storage + visibilitychange
+        lastOpen = Date.now();
+        readSpec();
+        $panel.style.setProperty('--ox', `${spec.ox}px`);
+        $panel.style.animation = 'none';
+        void $panel.offsetWidth;
+        $panel.style.animation = '';
+        send('quick');
+        if (spec.panel === 'network') send('wifi-scan');
+        clearInterval(ticker);
+        ticker = setInterval(refresh, 700);
+        refresh();
+        glass.layout();
+      }
+      addEventListener('storage', e => e.key === 'mw4w.quick' && opened());
+      document.addEventListener('visibilitychange', () => !document.hidden && opened());
+
+      // ---- throttled sends for sliders (the worker queues every line)
+      const throttles = {};
+      function throttle(key, fn, ms = 150) {
+        const t = (throttles[key] ??= { last: 0, timer: 0 });
+        clearTimeout(t.timer);
+        const run = () => ((t.last = Date.now()), fn());
+        if (Date.now() - t.last >= ms) run();
+        else t.timer = setTimeout(run, ms);
+      }
+      let dragging = false;
+      addEventListener('pointerdown', e => (dragging = e.target.type === 'range'));
+      addEventListener('pointerup', () => setTimeout(() => (dragging = false), 400));
+
+      const slider = (key, v, dim = false) =>
+        `<input type="range" min="0" max="100" value="${Math.round(v)}" data-s="${esc(key)}" class="${dim ? 'dim' : ''}" style="--v:${Math.round(v)}%" />`;
+
+      // ---- panels
+      function audio(o) {
+        const a = o.audio;
+        if (!a) return '<h1>Sound</h1><div class="note">No audio devices.</div>';
+        const out = a.defaultPlaybackDevice;
+        const mic = a.defaultRecordingDevice;
+        let h = `<h1>${svg('vol2', 20)}<span class="grow">Sound</span></h1>`;
+        if (out)
+          h += `<div class="row"><button class="ib ${out.isMuted ? '' : 'on'}" data-a="mute" title="Mute">${svg(volIcon(out.volume, out.isMuted), 17)}</button>${slider('out', out.volume, out.isMuted)}<span class="val">${Math.round(out.volume)}%</span></div>`;
+        if (mic)
+          h += `<div class="row"><button class="ib ${mic.isMuted ? '' : 'on'}" data-a="micmute" title="Mute microphone">${svg(mic.isMuted ? 'micOff' : 'mic', 17)}</button>${slider('mic', mic.volume, mic.isMuted)}<span class="val">${Math.round(mic.volume)}%</span></div>`;
+        const devs = a.playbackDevices ?? [];
+        if (devs.length > 1) {
+          h += '<h2>Output</h2>';
+          for (const d of devs)
+            h += `<div class="row click ${d.deviceId === out?.deviceId ? 'sel' : ''}" data-dev="${esc(d.deviceId)}">${svg('speaker', 17)}<span class="name">${esc(d.name)}</span>${d.deviceId === out?.deviceId ? svg('check', 16) : ''}</div>`;
+        }
+        const ins = a.recordingDevices ?? [];
+        if (ins.length > 1) {
+          h += '<h2>Input</h2>';
+          for (const d of ins)
+            h += `<div class="row click ${d.deviceId === mic?.deviceId ? 'sel' : ''}" data-dev="${esc(d.deviceId)}">${svg('mic', 17)}<span class="name">${esc(d.name)}</span>${d.deviceId === mic?.deviceId ? svg('check', 16) : ''}</div>`;
+        }
+        const mixer = quick.mixer ?? [];
+        if (mixer.length) {
+          h += '<h2>Apps</h2><div class="list">';
+          for (const m of mixer)
+            h += `<div class="row"><button class="ib ${m.muted ? '' : 'on'}" data-app="${esc(m.name)}" title="${esc(m.name)}"><img src="${esc(m.icon)}" onerror="this.style.visibility='hidden'" /></button><span class="mix"><small>${esc(m.name)}</small>${slider('app:' + m.name, m.vol, m.muted)}</span><span class="val">${m.vol}%</span></div>`;
+          h += '</div>';
+        }
+        return h + `<div class="foot"><button class="link" data-open="ms-settings:sound">${svg('gear', 15)}Sound settings</button></div>`;
+      }
+
+      function network(o) {
+        const n = o.network;
+        const type = n?.defaultInterface?.type;
+        const r = quick.radios ?? {};
+        let h = `<h1>${svg(type === 'wifi' ? 'wifi' : type ? 'lan' : 'offline', 20)}<span class="grow">Network</span>`;
+        h += `<button class="ib" data-a="scan" title="Scan again">${svg('refresh', 16, wifi?.scanning ? 'spin' : '')}</button></h1>`;
+        const status = type === 'wifi' ? (n.defaultGateway?.ssid ?? 'Wi-Fi') : type ? (n.defaultInterface?.friendlyName ?? 'Ethernet') : 'Disconnected';
+        const rate = v => (v ? `${(+v.siValue).toFixed(1)} ${v.siUnit}/s` : '');
+        const traffic = n?.traffic ? `↓ ${rate(n.traffic.received)}  ↑ ${rate(n.traffic.transmitted)}` : '';
+        h += '<div class="tiles">';
+        if ('wifi' in r) h += `<button class="tile ${r.wifi ? 'on' : ''}" data-radio="wifi">${svg('wifi', 18)}<span>Wi-Fi<small>${r.wifi ? esc(type === 'wifi' ? status : 'On') : 'Off'}</small></span></button>`;
+        if ('bluetooth' in r) h += `<button class="tile ${r.bluetooth ? 'on' : ''}" data-radio="bluetooth">${svg('bluetooth', 18)}<span>Bluetooth<small>${r.bluetooth ? 'On' : 'Off'}</small></span></button>`;
+        h += '</div>';
+        h += `<div class="row">${svg(type === 'wifi' ? 'wifi' : type ? 'lan' : 'offline', 17)}<span class="name">${esc(status)}</span><small>${esc(traffic)}</small></div>`;
+
+        if (r.wifi !== false && wifi) {
+          if (!wifi.adapter) h += '';
+          else {
+            h += '<h2>Wi-Fi networks</h2>';
+            if (wifi.access && wifi.access !== 'Allowed')
+              h += `<div class="note">Windows only lists Wi-Fi networks to apps with location access. <a data-open="ms-settings:privacy-location">Location settings</a></div>`;
+            const msg = { connecting: 'Connecting…', password: 'Wrong password', failed: 'Could not connect', notfound: 'Network not found' }[wifi.status];
+            if (msg) h += `<div class="note">${msg}</div>`;
+            h += '<div class="list">';
+            for (const w of wifi.networks ?? []) {
+              h += `<div class="row click ${w.connected ? 'sel' : ''}" data-ssid="${esc(w.ssid)}" data-secure="${w.secure && !w.known ? 1 : ''}">${wifiBars(w.bars, 17)}<span class="name">${esc(w.ssid)}</span>${w.secure ? svg('lock', 13) : ''}${w.connected ? '<small>Connected</small>' : w.known ? '<small>Saved</small>' : ''}</div>`;
+              if (pwFor === w.ssid) h += `<form class="pw" data-ssid="${esc(w.ssid)}"><input type="password" placeholder="Password" autocomplete="off" /><button class="btn">Connect</button></form>`;
+            }
+            if (!wifi.networks?.length) h += '<div class="note">No networks found.</div>';
+            h += '</div>';
+          }
+        }
+        return h + `<div class="foot"><button class="link" data-open="ms-settings:network">${svg('gear', 15)}Network settings</button></div>`;
+      }
+
+      function battery(o) {
+        const b = o.battery;
+        let h = `<h1>${svg(b?.isCharging ? 'charging' : 'battery', 20)}<span class="grow">Power</span></h1>`;
+        if (b && b.state !== 'unknown') {
+          const p = Math.round(b.chargePercent);
+          const dur = ms => {
+            if (!ms) return '';
+            const m = Math.round(ms / 60000);
+            return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`;
+          };
+          const left = b.isCharging ? (b.timeTillFull ? `${dur(b.timeTillFull)} until full` : 'Charging') : b.timeTillEmpty ? `${dur(b.timeTillEmpty)} left` : 'On battery';
+          h += `<div class="big"><b>${p}%</b><div>${esc(b.state === 'full' ? 'Fully charged' : left)}<small>${b.isCharging ? 'Plugged in' : 'On battery'}</small></div></div>`;
+          h += `<div class="meter"><i style="width:${p}%;${p < 15 && !b.isCharging ? 'background:var(--error)' : ''}"></i></div>`;
+          h += '<div class="facts">';
+          if (b.healthPercent) h += `<span>Health <b>${Math.round(b.healthPercent)}%</b></span>`;
+          if (b.powerConsumption) h += `<span>Power draw <b>${Math.abs(b.powerConsumption).toFixed(1)} W</b></span>`;
+          if (b.cycleCount) h += `<span>Cycles <b>${b.cycleCount}</b></span>`;
+          if (b.voltage) h += `<span>Voltage <b>${(+b.voltage).toFixed(1)} V</b></span>`;
+          h += '</div>';
+        } else h += '<div class="note">No battery: plugged in.</div>';
+        if (quick.brightness != null) h += `<h2>Brightness</h2><div class="row">${svg('sun', 18)}${slider('light', quick.brightness)}<span class="val">${quick.brightness}%</span></div>`;
+        const mode = quick.powerMode ?? -1;
+        if (mode >= 0) {
+          h += '<h2>Power mode</h2><div class="seg">';
+          [
+            ['leaf', 'Efficiency'],
+            ['gauge', 'Balanced'],
+            ['zap', 'Performance'],
+          ].forEach(([ic, label], i) => (h += `<button class="${i === mode ? 'on' : ''}" data-mode="${i}">${svg(ic, 18)}${label}</button>`));
+          h += '</div>';
+        }
+        return h + `<div class="foot"><button class="link" data-open="ms-settings:powersleep">${svg('gear', 15)}Power settings</button></div>`;
+      }
+
+      function calendar() {
+        const now = new Date();
+        const first = new Date(now.getFullYear(), now.getMonth() + month, 1);
+        const lang = navigator.language;
+        let h = `<div class="now">${now.toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit', hour12: !s.clock24h })}</div><small>${esc(now.toLocaleDateString(lang, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }))}</small>`;
+        h += `<h1><span class="grow">${esc(first.toLocaleDateString(lang, { month: 'long', year: 'numeric' }))}</span><button class="ib" data-month="-1">${svg('chevron', 16)}</button><button class="ib" data-month="1">${svg('right', 16)}</button></h1>`;
+        h += '<div class="cal">';
+        for (let i = 0; i < 7; i++) h += `<span class="wd">${esc(new Date(2024, 0, 1 + i).toLocaleDateString(lang, { weekday: 'narrow' }))}</span>`;
+        const start = new Date(first);
+        start.setDate(1 - ((first.getDay() + 6) % 7));
+        for (let i = 0; i < 42; i++) {
+          const d = new Date(start);
+          d.setDate(start.getDate() + i);
+          const cls = [d.getMonth() !== first.getMonth() && 'out', d.toDateString() === now.toDateString() && 'today', d.getDay() % 6 === 0 && 'we'].filter(Boolean).join(' ');
+          h += `<span class="${cls}">${d.getDate()}</span>`;
+        }
+        return h + `</div><div class="foot"><button class="link" data-open="outlookcal:">${svg('right', 15)}Calendar</button></div>`;
+      }
+
+      function render() {
+        if (dragging || document.activeElement?.closest?.('.pw')) return; // don't rebuild under the pointer / while typing
+        const o = providers.outputMap;
+        const html = { audio, network, battery, calendar }[spec.panel]?.(o) ?? '';
+        if ($panel._html !== html) {
+          $panel.querySelectorAll(':scope > :not(.lg):not(.lg-light)').forEach(e => e.remove());
+          $panel.insertAdjacentHTML('beforeend', html);
+          $panel._html = html;
+          $panel.querySelector('.pw input')?.focus();
+          fit();
+        }
+      }
+      providers.onOutput(() => document.hidden || render());
+
+      // the window follows the panel's height: transparent rows would still eat clicks
+      let lastH = 0;
+      function fit() {
+        const h = Math.ceil($panel.getBoundingClientRect().height) + 28;
+        if (h === lastH || !win.setSize) return;
+        lastH = h;
+        win.setSize({ type: 'Logical', width: 380, height: h }).catch(() => {});
+      }
+
+      // ---- input
+      $panel.addEventListener('input', e => {
+        const el = e.target;
+        if (!el.dataset.s) return;
+        const v = +el.value;
+        el.style.setProperty('--v', `${v}%`);
+        const val = el.closest('.row')?.querySelector('.val');
+        if (val) val.textContent = `${v}%`;
+        const a = providers.outputMap.audio;
+        const k = el.dataset.s;
+        if (k === 'out') throttle(k, () => a?.setVolume(v));
+        else if (k === 'mic') throttle(k, () => a?.setVolume(v, { deviceId: a.defaultRecordingDevice?.deviceId }));
+        else if (k === 'light') throttle(k, () => send('brightness', v), 250);
+        else if (k.startsWith('app:')) throttle(k, () => send('app-audio', b64(JSON.stringify({ name: k.slice(4), vol: v }))), 200);
+      });
+
+      $panel.addEventListener('submit', e => {
+        e.preventDefault();
+        const f = e.target;
+        send('wifi-connect', b64(JSON.stringify({ ssid: f.dataset.ssid, pass: f.querySelector('input').value })));
+        pwFor = null;
+        holdW();
+        wifi = { ...wifi, status: 'connecting' };
+        document.activeElement.blur();
+        render();
+      });
+
+      const hold = () => (holdQuick = Date.now() + 2500);
+      const holdW = () => (holdWifi = Date.now() + 15000);
+      $panel.addEventListener('click', e => {
+        const el = e.target.closest('[data-a],[data-dev],[data-app],[data-radio],[data-ssid],[data-mode],[data-month],[data-open]');
+        if (!el || el.tagName === 'FORM' || e.target.closest('.pw')) return;
+        const a = providers.outputMap.audio;
+        const d = el.dataset;
+        if (d.open) return open(d.open), close();
+        if (d.a === 'mute') return a?.setMute(!a.defaultPlaybackDevice?.isMuted);
+        if (d.a === 'micmute') return a?.setMute(!a.defaultRecordingDevice?.isMuted, { deviceId: a.defaultRecordingDevice?.deviceId });
+        if (d.a === 'scan') return holdW(), (wifi = { ...wifi, scanning: true }), render(), send('wifi-scan');
+        if (d.dev) return send('audio-default', b64(d.dev));
+        if (d.app) {
+          const m = quick.mixer?.find(m => m.name === d.app);
+          if (m) hold(), (m.muted = !m.muted), render();
+          return send('app-audio', b64(JSON.stringify({ name: d.app, muted: m?.muted ?? true })));
+        }
+        if (d.radio) {
+          hold();
+          quick.radios[d.radio] = !quick.radios[d.radio];
+          render();
+          return send('radio', `${d.radio} ${quick.radios[d.radio] ? 'on' : 'off'}`);
+        }
+        if (d.mode) return hold(), (quick.powerMode = +d.mode), render(), send('power-mode', d.mode);
+        if (d.month) return (month += +d.month), render();
+        if (d.ssid) {
+          const w = wifi?.networks?.find(w => w.ssid === d.ssid);
+          if (w?.connected) return send('wifi-disconnect');
+          if (d.secure) return (pwFor = pwFor === d.ssid ? null : d.ssid), render();
+          holdW();
+          wifi = { ...wifi, status: 'connecting' };
+          render();
+          return send('wifi-connect', b64(JSON.stringify({ ssid: d.ssid })));
+        }
+      });
+
+      addEventListener('wheel', e => {
+        const r = e.target.closest('input[type=range]');
+        if (!r) return;
+        r.value = Math.max(0, Math.min(100, +r.value + (e.deltaY < 0 ? 5 : -5)));
+        r.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+
+      setInterval(() => spec.panel === 'calendar' && !document.hidden && render(), 15000);
+      if (!document.documentElement.classList.contains('preload')) opened();
+      render();
+    </script>
+  </body>
+</html>

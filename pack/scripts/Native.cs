@@ -47,6 +47,34 @@ namespace Mw4w
 
         public static void Suspend() { SetSuspendState(false, false, false); }
 
+        // Power mode (Settings > System > Power): an overlay on the plan. Exported by powrprof
+        // since Windows 10 1709 but undocumented, hence the guards.
+        [DllImport("powrprof.dll")]
+        static extern uint PowerGetEffectiveOverlayScheme(out Guid overlay);
+
+        [DllImport("powrprof.dll")]
+        static extern uint PowerSetActiveOverlayScheme(Guid overlay);
+
+        static readonly string[] modes = { "961cc777-2547-4f9d-8174-7d86181b8a7a", "00000000-0000-0000-0000-000000000000", "ded574b5-45a0-4f42-8737-46345c09c238" };
+
+        // 0 = best efficiency, 1 = balanced, 2 = best performance, -1 = unknown
+        public static int PowerMode()
+        {
+            try
+            {
+                Guid g;
+                if (PowerGetEffectiveOverlayScheme(out g) != 0) return -1;
+                return Array.IndexOf(modes, g.ToString());
+            }
+            catch (EntryPointNotFoundException) { return -1; }
+        }
+
+        public static void SetPowerMode(int mode)
+        {
+            try { PowerSetActiveOverlayScheme(new Guid(modes[Math.Max(0, Math.Min(2, mode))])); }
+            catch (EntryPointNotFoundException) { }
+        }
+
         public static void TaskbarAutoHide(bool on)
         {
             var d = new APPBARDATA();
@@ -223,6 +251,107 @@ namespace Mw4w
             }
             return result;
         }
+
+        static IAudioSessionEnumerator SessionList()
+        {
+            var en = (IMMDeviceEnumerator)new MMDeviceEnumerator();
+            IMMDevice dev;
+            if (en.GetDefaultAudioEndpoint(0, 1, out dev) != 0) return null;
+            object o;
+            var iid = typeof(IAudioSessionManager2).GUID;
+            if (dev.Activate(ref iid, 0x17, IntPtr.Zero, out o) != 0) return null;
+            IAudioSessionEnumerator list;
+            return ((IAudioSessionManager2)o).GetSessionEnumerator(out list) == 0 ? list : null;
+        }
+
+        // The volume mixer for the quick panel: one "process<TAB>volume<TAB>muted<TAB>exe path" per app
+        // with a live session on the default output (an app with several sessions is listed once).
+        public static string[] Mixer()
+        {
+            var rows = new System.Collections.Generic.List<string>();
+            var seen = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var list = SessionList();
+            if (list == null) return rows.ToArray();
+            int n;
+            list.GetCount(out n);
+            for (int i = 0; i < n; i++)
+            {
+                IAudioSessionControl2 s;
+                if (list.GetSession(i, out s) != 0) continue;
+                int state;
+                uint pid;
+                s.GetState(out state);
+                s.GetProcessId(out pid);
+                if (state == 2 || pid == 0) continue; // expired, system sounds
+                string name, path = "";
+                try
+                {
+                    var p = System.Diagnostics.Process.GetProcessById((int)pid);
+                    name = p.ProcessName;
+                    try { path = p.MainModule.FileName; } catch { }
+                }
+                catch { continue; }
+                if (!seen.Add(name)) continue;
+                var v = (ISimpleAudioVolume)s;
+                float f;
+                bool m;
+                v.GetMasterVolume(out f);
+                v.GetMute(out m);
+                rows.Add(name + "\t" + (int)Math.Round(f * 100) + "\t" + (m ? 1 : 0) + "\t" + path);
+            }
+            return rows.ToArray();
+        }
+
+        // Sets every session of process `name`: volume 0..100 and/or mute 0/1 (-1 = leave as is).
+        public static void SetApp(string name, int volume, int mute)
+        {
+            var list = SessionList();
+            if (list == null) return;
+            int n;
+            list.GetCount(out n);
+            var ctx = Guid.Empty;
+            for (int i = 0; i < n; i++)
+            {
+                IAudioSessionControl2 s;
+                if (list.GetSession(i, out s) != 0) continue;
+                uint pid;
+                s.GetProcessId(out pid);
+                if (pid == 0) continue;
+                try { if (!string.Equals(System.Diagnostics.Process.GetProcessById((int)pid).ProcessName, name, StringComparison.OrdinalIgnoreCase)) continue; }
+                catch { continue; }
+                var v = (ISimpleAudioVolume)s;
+                if (volume >= 0) v.SetMasterVolume(Math.Min(100, volume) / 100f, ref ctx);
+                if (mute >= 0) v.SetMute(mute == 1, ref ctx);
+            }
+        }
+
+        // Default output/input device (an MMDevice id, as Zebar's deviceId) for all three roles,
+        // with the undocumented IPolicyConfig that the Sound settings page uses.
+        public static void SetDefault(string id)
+        {
+            var pc = (IPolicyConfig)new PolicyConfigClient();
+            for (int role = 0; role < 3; role++) pc.SetDefaultEndpoint(id, role);
+        }
+    }
+
+    [ComImport, Guid("870AF99C-171D-4F9E-AF0D-E63DF40C2BC9")]
+    class PolicyConfigClient { }
+
+    [ComImport, Guid("F8679F50-850A-41CF-9C72-430F290290C8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    interface IPolicyConfig
+    {
+        [PreserveSig] int GetMixFormat(IntPtr a, IntPtr b);
+        [PreserveSig] int GetDeviceFormat(IntPtr a, int b, IntPtr c);
+        [PreserveSig] int ResetDeviceFormat(IntPtr a);
+        [PreserveSig] int SetDeviceFormat(IntPtr a, IntPtr b, IntPtr c);
+        [PreserveSig] int GetProcessingPeriod(IntPtr a, int b, IntPtr c, IntPtr d);
+        [PreserveSig] int SetProcessingPeriod(IntPtr a, IntPtr b);
+        [PreserveSig] int GetShareMode(IntPtr a, IntPtr b);
+        [PreserveSig] int SetShareMode(IntPtr a, IntPtr b);
+        [PreserveSig] int GetPropertyValue(IntPtr a, int b, IntPtr c, IntPtr d);
+        [PreserveSig] int SetPropertyValue(IntPtr a, int b, IntPtr c, IntPtr d);
+        [PreserveSig] int SetDefaultEndpoint([MarshalAs(UnmanagedType.LPWStr)] string id, int role);
+        [PreserveSig] int SetEndpointVisibility([MarshalAs(UnmanagedType.LPWStr)] string id, int visible);
     }
 
     [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")]
@@ -281,5 +410,7 @@ namespace Mw4w
     {
         [PreserveSig] int SetMasterVolume(float level, ref Guid ctx);
         [PreserveSig] int GetMasterVolume(out float level);
+        [PreserveSig] int SetMute(bool mute, ref Guid ctx);
+        [PreserveSig] int GetMute(out bool mute);
     }
 }

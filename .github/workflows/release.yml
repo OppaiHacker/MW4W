@@ -1,0 +1,45 @@
+# Builds dist/MW4W-Setup.exe and publishes it as release v<VERSION> (the tag is
+# created by the release). Pushing again with the same VERSION updates that release.
+name: release
+
+on:
+  push:
+    branches: [main, 'claude/**']
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  setup-exe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - name: Version
+        id: v
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = tag ]; then v="${GITHUB_REF_NAME}"; else v="v$(cat VERSION)"; fi
+          echo "tag=$v" >> "$GITHUB_OUTPUT"
+      - name: Build the installer
+        run: ./installer/build.sh "${{ steps.v.outputs.tag }}"
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.v.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: MW4W ${{ steps.v.outputs.tag }}
+          files: dist/MW4W-Setup.exe
+          make_latest: true
+          body: |
+            **MW4W-Setup.exe**: download and run. It installs GlazeWM and Zebar (winget) if missing, the MW4W widget pack, wallpapers and colors, and starts everything.
+
+            - ML4W Quickshell-style bar and dock with liquid glass
+            - MediaControll capsule and dynamic island (cover, seek, controls, per-app volume)
+            - Quick panels: sound (devices, per-app mixer), network (Wi-Fi list and connect, Bluetooth), power (battery, brightness, power mode), calendar
+            - Optional: MW4W as the Windows shell instead of explorer.exe (`-ReplaceExplorer` or Settings → System)
+
+            Options: `MW4W-Setup.exe -NoStart -KeepWallpaper -ReplaceExplorer`; uninstall: `MW4W-Setup.exe --uninstall`.
+            The exe isn't code-signed, so SmartScreen may ask: *More info → Run anyway*.

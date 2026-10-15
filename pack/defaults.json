@@ -17,6 +17,7 @@
   "focusFollowsMouse": true,
   "animations": true,
   "hideTaskbar": true,
+  "replaceExplorer": false,
   "clock24h": true,
   "showMedia": true,
   "showTray": true,

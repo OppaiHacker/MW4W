@@ -2,7 +2,7 @@
   "$schema": "https://github.com/glzr-io/zebar/raw/v3.0.0/resources/zpack-schema.json",
   "name": "mw4w",
   "version": "1.0.0",
-  "description": "MW4W (My Windows 4 Work): ML4W-style Hyprland look for Windows: waybar, MediaControll island, rofi, wlogout, waypaper, keybindings and settings.",
+  "description": "MW4W (My Windows 4 Work): ML4W-style Hyprland look for Windows: waybar, MediaControll island, quick panels (sound, network, power, calendar), rofi, wlogout, waypaper, keybindings and settings.",
   "tags": [
     "topbar",
     "glazewm",
@@ -465,6 +465,68 @@
           "offsetY": "0px",
           "width": "440px",
           "height": "252px",
+          "monitorSelection": {
+            "type": "primary"
+          },
+          "dockToEdge": {
+            "enabled": false,
+            "edge": null,
+            "windowMargin": "0px"
+          }
+        }
+      ]
+    },
+    {
+      "name": "quick",
+      "htmlPath": "./quick.html",
+      "zOrder": "top_most",
+      "shownInTaskbar": false,
+      "focused": true,
+      "resizable": false,
+      "transparent": true,
+      "includeFiles": [
+        "**/*"
+      ],
+      "caching": {
+        "defaultDuration": 0,
+        "rules": []
+      },
+      "privileges": {
+        "shellCommands": [
+          {
+            "program": "powershell",
+            "argsRegex": ".*"
+          },
+          {
+            "program": "explorer",
+            "argsRegex": ".*"
+          }
+        ]
+      },
+      "presets": [
+        {
+          "name": "default",
+          "anchor": "top_left",
+          "offsetX": "0px",
+          "offsetY": "0px",
+          "width": "380px",
+          "height": "560px",
+          "monitorSelection": {
+            "type": "primary"
+          },
+          "dockToEdge": {
+            "enabled": false,
+            "edge": null,
+            "windowMargin": "0px"
+          }
+        },
+        {
+          "name": "preload",
+          "anchor": "top_left",
+          "offsetX": "0px",
+          "offsetY": "0px",
+          "width": "380px",
+          "height": "560px",
           "monitorSelection": {
             "type": "primary"
           },

@@ -5,7 +5,9 @@
 #   power <lock|logout|sleep|hibernate|reboot|shutdown>
 #   kill-active | empty-workspace | gamemode | bar-restart | bar-toggle
 #   set <base64-json> | toggle <setting> | run <base64-cmd> | launch <appid> | winicons
-#   media-loop | media-seek <seconds> | media-volume <0-100> | updates
+#   media-loop | media-seek <seconds> | media-volume <0-100> | updates | shell <on|off>
+#   quick | app-audio <b64> | audio-default <b64 id> | power-mode <0-2> | brightness <0-100> | radio <wifi|bluetooth> <on|off>
+#   wifi-scan | wifi-connect <b64 {ssid, pass}> | wifi-disconnect
 param([string]$Cmd = 'apply', [string]$Arg = '')
 
 $ErrorActionPreference = 'Stop'
@@ -406,26 +408,38 @@ function Update-Apps {
 # ---------------------------------------------------------------- media (MediaControll island)
 # Windows' MPRIS is GSMTC. Zebar's media provider has title, state and controls but no cover
 # art, seek or per-app volume, so media-loop keeps cache\media.json up to date with those.
+# await for WinRT calls (PowerShell 5.1 has no await): IAsyncOperation<T> / IAsyncAction -> Task
+function Init-WinRt {
+  if ($script:AsTask) { return }
+  Add-Type -AssemblyName System.Runtime.WindowsRuntime
+  $one = [WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 }
+  $script:AsTaskAction = $one | Where-Object { $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncAction' } | Select-Object -First 1
+  $script:AsTask = $one | Where-Object { $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' } | Select-Object -First 1
+}
+
+function Await-Action($op, [int]$ms = 3000) {
+  $task = $script:AsTaskAction.Invoke($null, @($op))
+  if (-not $task.Wait($ms)) { throw 'WinRT call timed out' }
+}
+
 function Init-Media {
   if ($script:MediaMgr) { return }
-  Add-Type -AssemblyName System.Runtime.WindowsRuntime
+  Init-WinRt
   $null = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media.Control, ContentType = WindowsRuntime]
   $null = [Windows.Storage.Streams.IRandomAccessStreamWithContentType, Windows.Storage.Streams, ContentType = WindowsRuntime]
-  $script:AsTask = [WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
-    $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1'
-  } | Select-Object -First 1
   $script:MediaMgr = Await-WinRt ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]::RequestAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager])
 }
 
-function Await-WinRt($op, [type]$type) {
+function Await-WinRt($op, [type]$type, [int]$ms = 3000) {
   $task = $script:AsTask.MakeGenericMethod($type).Invoke($null, @($op))
-  if (-not $task.Wait(3000)) { throw 'WinRT call timed out' }
+  if (-not $task.Wait($ms)) { throw 'WinRT call timed out' }
   $task.Result
 }
 
 # GSMTC app id -> processes (for the audio session and the icon) and a label. Ids look like
 # 'chrome.exe', 'SpotifyAB.SpotifyMusic_zpnnbk0ga4vpm!Spotify', or a hash for Firefox-based browsers.
 function Get-MediaApp([string]$id) {
+  if ($script:AppCache -and $script:AppCache.id -eq $id -and (Get-Process -Id $script:AppCache.pid -ErrorAction SilentlyContinue)) { return $script:AppCache.app }
   $procs = @(
     if ($id -match '^(.+)\.exe$') { $Matches[1] }
     elseif ($id -match '^([^_!]+)_[^!]*!(.+)$') { $Matches[2]; $Matches[1] -replace '^.*\.', '' }
@@ -434,10 +448,13 @@ function Get-MediaApp([string]$id) {
   )
   $run = Get-Process -Name $procs -ErrorAction SilentlyContinue | Select-Object -First 1
   if ($run) { $procs = @($run.ProcessName) }
+  $script:AppCache = $null
   $names = @{ chrome = 'Chrome'; msedge = 'Edge'; firefox = 'Firefox'; zen = 'Zen'; brave = 'Brave'; opera = 'Opera'; spotify = 'Spotify'; vlc = 'VLC' }
   $p = $procs[0].ToLower()
   $label = if ($names[$p]) { $names[$p] } else { (Get-Culture).TextInfo.ToTitleCase($procs[0]) }
-  @{ procs = [string[]]$procs; name = $label; icon = "cache/icons/proc-$p.png" }
+  $app = @{ procs = [string[]]$procs; name = $label; icon = "cache/icons/proc-$p.png" }
+  if ($run) { $script:AppCache = @{ id = $id; pid = $run.Id; app = $app } }
+  $app
 }
 
 # The cover goes to cache\media\<hash>.img; none yet = try again next time (browsers send it late).
@@ -493,15 +510,20 @@ function Media-Loop {
   if (-not $mutex.WaitOne(0)) { return }  # one loop is enough
   Load-Native; Init-Media
   $path = Join-Path $Cache 'media.json'
-  $last = $null; $gone = 0
+  $last = $null; $gone = 0; $i = 0
   # ends ~10s after Zebar does (the bar restart only takes it away for a moment)
-  while ($gone -lt 15) {
-    $gone = if (Get-Process zebar -ErrorAction SilentlyContinue) { 0 } else { $gone + 1 }
+  while ($gone -lt 3) {
+    # every ~3.5s is enough to notice Zebar is gone
+    if (($i++ % 5) -eq 0) { $gone = if (Get-Process zebar -ErrorAction SilentlyContinue) { 0 } else { $gone + 1 } }
+    $idle = $true
     try {
-      $j = Get-MediaState | ConvertTo-Json -Compress
+      $m = Get-MediaState
+      $idle = -not $m.playing
+      $j = $m | ConvertTo-Json -Compress
       if ($j -ne $last) { Write-Utf8 $path $j; $last = $j }
     } catch { }
-    Start-Sleep -Milliseconds 700
+    # paused or nothing playing: the bar extrapolates nothing, a slower poll is fine
+    Start-Sleep -Milliseconds $(if ($idle) { 1400 } else { 700 })
   }
 }
 
@@ -518,6 +540,141 @@ function Media-Volume([int]$v) {
   $s = $script:MediaMgr.GetCurrentSession()
   if ($s) { [Mw4w.Audio]::AppVolume((Get-MediaApp $s.SourceAppUserModelId).procs, [Math]::Max(0, [Math]::Min(100, $v))) | Out-Null }
 }
+
+# ---------------------------------------------------------------- quick panels (quick.html)
+# What Zebar's providers can't do: the volume mixer, the default device, Wi-Fi networks, radios,
+# power mode and brightness. Results go to cache\quick.json and cache\wifi.json; the panel polls them.
+function Init-Radios {
+  if ($script:RadioType) { return }
+  Init-WinRt
+  $script:RadioType = [Windows.Devices.Radios.Radio, Windows.System.Devices, ContentType = WindowsRuntime]
+  $null = [Windows.Devices.Radios.RadioAccessStatus, Windows.System.Devices, ContentType = WindowsRuntime]
+  $null = Await-WinRt ($script:RadioType::RequestAccessAsync()) ([Windows.Devices.Radios.RadioAccessStatus])
+}
+
+function Get-Radios {
+  Init-Radios
+  Await-WinRt ($script:RadioType::GetRadiosAsync()) ([Collections.Generic.IReadOnlyList[Windows.Devices.Radios.Radio]])
+}
+
+function Set-Radio([string]$a) {
+  $kind, $on = $a.Split(' ')
+  Init-Radios
+  $want = if ($on -eq 'on') { [Windows.Devices.Radios.RadioState]::On } else { [Windows.Devices.Radios.RadioState]::Off }
+  foreach ($r in Get-Radios) {
+    if ("$($r.Kind)" -eq $kind) { $null = Await-WinRt ($r.SetStateAsync($want)) ([Windows.Devices.Radios.RadioAccessStatus]) 5000 }
+  }
+  Update-Quick
+}
+
+function Get-Brightness {
+  try { [int](Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightness -ErrorAction Stop | Select-Object -First 1).CurrentBrightness } catch { $null }
+}
+
+function Update-Quick {
+  Load-Native
+  $todo = @(); $out = @()
+  $mixer = foreach ($row in [Mw4w.Audio]::Mixer()) {
+    $name, $vol, $muted, $exe = $row.Split("`t")
+    $icon = Join-Path $Cache ("icons\proc-{0}.png" -f $name.ToLower())
+    if ($exe -and -not (Test-Path $icon)) { $todo += $exe; $out += $icon }
+    [ordered]@{ name = $name; vol = [int]$vol; muted = $muted -eq '1'; icon = "cache/icons/proc-$($name.ToLower()).png" }
+  }
+  if ($todo.Count) { [Mw4w.Native]::Icons([string[]]$todo, [string[]]$out, 64) | Out-Null }
+  $radios = [ordered]@{}
+  try { foreach ($r in Get-Radios) { $radios["$($r.Kind)".ToLower()] = "$($r.State)" -eq 'On' } } catch { }
+  Save-Json (Join-Path $Cache 'quick.json') ([ordered]@{
+      at         = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+      mixer      = @($mixer)
+      radios     = $radios
+      powerMode  = [Mw4w.Native]::PowerMode()
+      brightness = Get-Brightness
+    })
+}
+
+function Set-AppAudio([string]$b64) {
+  $p = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($b64)) | ConvertFrom-Json
+  Load-Native
+  $vol = if ($null -ne $p.vol) { [int]$p.vol } else { -1 }
+  $mute = if ($null -ne $p.muted) { [int][bool]$p.muted } else { -1 }
+  [Mw4w.Audio]::SetApp($p.name, $vol, $mute)
+  Update-Quick
+}
+
+function Get-WifiAdapter {
+  Init-WinRt
+  $t = [Windows.Devices.WiFi.WiFiAdapter, Windows.System.Devices, ContentType = WindowsRuntime]
+  $null = [Windows.Devices.WiFi.WiFiAccessStatus, Windows.System.Devices, ContentType = WindowsRuntime]
+  $script:WifiAccess = "$(Await-WinRt ($t::RequestAccessAsync()) ([Windows.Devices.WiFi.WiFiAccessStatus]))"
+  @(Await-WinRt ($t::FindAllAdaptersAsync()) ([Collections.Generic.IReadOnlyList[Windows.Devices.WiFi.WiFiAdapter]]))[0]
+}
+
+function Get-ConnectedSsid($ad) {
+  $null = [Windows.Networking.Connectivity.ConnectionProfile, Windows.Networking.Connectivity, ContentType = WindowsRuntime]
+  try {
+    $cp = Await-WinRt ($ad.NetworkAdapter.GetConnectedProfileAsync()) ([Windows.Networking.Connectivity.ConnectionProfile])
+    if ($cp -and $cp.IsWlanConnectionProfile) { $cp.WlanConnectionProfileDetails.GetConnectedSsid() }
+  } catch { }
+}
+
+# Saved profiles: netsh's labels are translated, but every profile line is "<label> : <name>"
+function Get-WifiProfiles {
+  @(netsh wlan show profiles 2>$null | Where-Object { $_ -match '^\s+\S.*\s:\s(.+)$' } | ForEach-Object { $Matches[1].Trim() })
+}
+
+function Save-Wifi($ad, [string]$status = '') {
+  $known = Get-WifiProfiles
+  $cur = Get-ConnectedSsid $ad
+  $best = @{}
+  foreach ($n in $ad.NetworkReport.AvailableNetworks) {
+    if (-not $n.Ssid) { continue }  # hidden
+    if ($best[$n.Ssid] -and $best[$n.Ssid].SignalBars -ge $n.SignalBars) { continue }
+    $best[$n.Ssid] = $n
+  }
+  $list = foreach ($n in $best.Values) {
+    $auth = "$($n.SecuritySettings.NetworkAuthenticationType)"
+    [ordered]@{ ssid = $n.Ssid; bars = [int]$n.SignalBars; secure = $auth -notin 'Open80211', 'None'; known = $known -contains $n.Ssid; connected = $n.Ssid -eq $cur }
+  }
+  $list = @($list | Sort-Object { -not $_.connected }, { -not $_.known }, { - $_.bars })
+  Save-Json (Join-Path $Cache 'wifi.json') ([ordered]@{
+      at        = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+      adapter   = [bool]$ad
+      access    = $script:WifiAccess
+      connected = $cur
+      status    = $status
+      networks  = $list
+    })
+}
+
+function Wifi-Scan {
+  $ad = Get-WifiAdapter
+  if (-not $ad) { Save-Json (Join-Path $Cache 'wifi.json') @{ at = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds(); adapter = $false; networks = @() }; return }
+  try { Await-Action ($ad.ScanAsync()) 10000 } catch { }
+  Save-Wifi $ad
+}
+
+# arg: base64 JSON {ssid, pass?}. No password: the saved profile (or an open network).
+function Wifi-Connect([string]$b64) {
+  $p = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($b64)) | ConvertFrom-Json
+  $ad = Get-WifiAdapter
+  if (-not $ad) { return }
+  Save-Wifi $ad 'connecting'
+  $net = $ad.NetworkReport.AvailableNetworks | Where-Object Ssid -eq $p.ssid | Sort-Object SignalBars -Descending | Select-Object -First 1
+  if (-not $net) { try { Await-Action ($ad.ScanAsync()) 10000 } catch { }; $net = $ad.NetworkReport.AvailableNetworks | Where-Object Ssid -eq $p.ssid | Select-Object -First 1 }
+  if (-not $net) { return Save-Wifi $ad 'notfound' }
+  $null = [Windows.Devices.WiFi.WiFiConnectionResult, Windows.System.Devices, ContentType = WindowsRuntime]
+  $auto = [Windows.Devices.WiFi.WiFiReconnectionKind]::Automatic
+  $op = if ($p.pass) {
+    $null = [Windows.Security.Credentials.PasswordCredential, Windows.Security.Credentials, ContentType = WindowsRuntime]
+    $cred = New-Object Windows.Security.Credentials.PasswordCredential
+    $cred.Password = $p.pass
+    $ad.ConnectAsync($net, $auto, $cred)
+  } else { $ad.ConnectAsync($net, $auto) }
+  $r = "$((Await-WinRt $op ([Windows.Devices.WiFi.WiFiConnectionResult]) 20000).ConnectionStatus)"
+  Save-Wifi $ad $(if ($r -eq 'Success') { '' } elseif ($r -eq 'InvalidCredential') { 'password' } else { 'failed' })
+}
+
+function Wifi-Disconnect { $ad = Get-WifiAdapter; if ($ad) { $ad.Disconnect(); Start-Sleep -Milliseconds 500; Save-Wifi $ad } }
 
 # Package updates for the bar (ML4W's updates module): `winget upgrade` rows -> cache\updates.json.
 function Update-Updates {
@@ -593,6 +750,7 @@ function Set-Settings([string]$b64) {
   # only the slow steps this patch needs (a toggle shouldn't recolor or restart winmask)
   $keys = @($patch.PSObject.Properties.Name)
   if ($keys -contains 'hideTaskbar') { Sync-Taskbar }
+  if ($keys -contains 'replaceExplorer') { Sync-Shell ([bool]$patch.replaceExplorer) }
   if ($keys -contains 'dynamicColors' -or $keys -contains 'accent') { Update-Colors | Out-Null }
   Apply
 }
@@ -607,6 +765,15 @@ function Sync-Taskbar {
   if ([Mw4w.Native]::TaskbarIsAutoHide() -ne $want) { [Mw4w.Native]::TaskbarAutoHide($want) }
   # restart winmask through GlazeWM so it keeps GlazeWM's integrity level (it kills the old one)
   Glaze 'shell-exec', (Winmask-Cmd $s)
+}
+
+# MW4W instead of Explorer: Winlogon starts bin\mw4w-shell.exe at sign-in (it runs the startup
+# apps and GlazeWM, and falls back to Explorer when GlazeWM can't run). Takes effect at the next sign-in.
+$WinlogonKey = 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Winlogon'
+function Sync-Shell([bool]$on) {
+  $exe = Join-Path $Pack 'bin\mw4w-shell.exe'
+  if ($on -and (Test-Path $exe)) { Set-ItemProperty $WinlogonKey Shell $exe }
+  elseif ((Get-ItemProperty $WinlogonKey -ErrorAction SilentlyContinue).Shell -like '*mw4w-shell*') { Remove-ItemProperty $WinlogonKey Shell }
 }
 
 # Icons for the bar's taskbar module: cache\icons\proc-<process>.png
@@ -656,9 +823,23 @@ function Invoke-Mw4w([string]$Cmd, [string]$Arg) {
     'media-volume' { Media-Volume ([int]$Arg) }
     'updates' { Start-Self 'updates-now' }  # winget takes seconds: not in the warm worker
     'updates-now' { Update-Updates }
+    'quick' { Update-Quick }
+    'app-audio' { Set-AppAudio $Arg }
+    'audio-default' { Load-Native; [Mw4w.Audio]::SetDefault([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($Arg))) }
+    'power-mode' { Load-Native; [Mw4w.Native]::SetPowerMode([int]$Arg); Update-Quick }
+    'brightness' { $m = Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightnessMethods | Select-Object -First 1; if ($m) { Invoke-CimMethod -InputObject $m -MethodName WmiSetBrightness -Arguments @{ Timeout = 0; Brightness = [byte][Math]::Max(0, [Math]::Min(100, [int]$Arg)) } | Out-Null } }
+    'radio' { Set-Radio $Arg }
+    # Wi-Fi takes seconds: not in the warm worker
+    'wifi-scan' { Start-Self 'wifi-scan-now' }
+    'wifi-scan-now' { Wifi-Scan }
+    'wifi-connect' { Start-Self 'wifi-connect-now', $Arg }
+    'wifi-connect-now' { Wifi-Connect $Arg }
+    'wifi-disconnect' { Start-Self 'wifi-disconnect-now' }
+    'wifi-disconnect-now' { Wifi-Disconnect }
     'run' { Start-Self 'run-now', $Arg }
     'run-now' { Start-Process cmd.exe ('/c start "" ' + [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($Arg))) -WindowStyle Hidden }
-    'launch' { Start-Process explorer.exe "shell:AppsFolder\$Arg" }
+    'launch' { Start-Process "shell:AppsFolder\$Arg" }  # ShellExecute, no explorer.exe needed (MW4W may be the shell)
+    'shell' { Set-Settings ([Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes((@{ replaceExplorer = ($Arg -eq 'on') } | ConvertTo-Json)))) }
     'selftest' {
       $s = Get-Settings
       $checks = @(

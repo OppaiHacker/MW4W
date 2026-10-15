@@ -16,6 +16,21 @@
 | keybindings.sh       | `keybinds`: cheat sheet generated from `keybinds.json`                                                 |
 | gamemode.sh          | SUPER+ALT+G: no gaps, borders or transparency                                                          |
 
+## Quick panels
+
+The bar's icons drop down panels (`quick.html`) instead of opening Windows Settings:
+
+| Click | Panel |
+| --- | --- |
+| volume | **Sound**: output and microphone volume/mute, pick the output/input device, per-app mixer. Scroll = volume, right click = mute |
+| network | **Network**: Wi-Fi and Bluetooth switches, connection and traffic, Wi-Fi list — click to connect (password field for new networks), click the connected one to disconnect |
+| battery | **Power**: charge, time left, health, draw, brightness (laptop screens) and power mode (efficiency / balanced / performance) |
+| clock | **Calendar** |
+
+Zebar's providers give volume, devices, network and battery; `mw4w.ps1` adds the rest (Core Audio sessions, `IPolicyConfig`
+for the default device, WinRT `WiFiAdapter` and `Radio`, the power mode overlay, WMI brightness) through `cache/quick.json`
+and `cache/wifi.json`. Since Windows 11 24H2, listing Wi-Fi networks needs location access for desktop apps; the panel links it.
+
 ## Media (MediaControll)
 
 The capsule shows the cover, the title and an equalizer (dots when paused); it hides when nothing plays.
@@ -29,11 +44,34 @@ own volume (its Core Audio session, falling back to the system volume like Media
 in `cache/media.json`. The liquid glass is CSS (blurred cover, specular rim) instead of the GLSL shader: WebView2 widgets can't see the desktop behind them.
 Turn it off with *Media player module* in settings.
 
+## MW4W instead of Explorer
+
+*Settings → System → MW4W as the Windows shell* (or `MW4W-Setup.exe -ReplaceExplorer`, or `mw4w.ps1 shell on`)
+makes Winlogon start `bin/mw4w-shell.exe` instead of `explorer.exe` from the next sign-in. Then nothing of Explorer runs:
+no taskbar, Start menu, desktop icons, Win+X menu or Explorer's ~100 MB; the bar, dock and launcher are the shell.
+`mw4w-shell` does Explorer's sign-in chores — tells Winlogon the shell is ready, runs the `Run`/`RunOnce` keys and the
+Startup folders (skipping what Task Manager's Startup tab turned off) — and keeps GlazeWM running (restarted after a crash).
+
+Folders still open in Explorer windows (it only becomes the shell when it is the registered one).
+Toasts, the volume/brightness OSD, Win+A/Win+N panels and the Windows tray come from Explorer and are gone;
+the bar has its own tray (Zebar). If GlazeWM is missing or keeps crashing, `mw4w-shell` starts Explorer, so a broken
+install never ends at a black screen; CTRL+SHIFT+ESC → *Run new task* → `explorer` works too. `mw4w.ps1 shell off`
+or the uninstaller switch back.
+
+This is a user-mode shell like Explorer itself — nothing of a window manager or shell belongs in the kernel
+(a driver could only crash the machine and needs a Microsoft signature).
+
 ## Install
+
+Download **MW4W-Setup.exe** from [Releases](https://github.com/OppaiHacker/MW4W/releases/latest) and run it
+(it isn't code-signed, so SmartScreen may ask: *More info → Run anyway*). Or from a clone:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File install.ps1
 ```
+
+`MW4W-Setup.exe` takes the same flags, plus `--uninstall`. Build it with `installer/build.sh [version]`
+(needs Go). CI builds it on every push and publishes it as release `v<VERSION>`; bump `VERSION` for a new release.
 
 The installer:
 
@@ -83,6 +121,7 @@ install.ps1 / uninstall.ps1
 pack/                     -> ~/.glzr/zebar/mw4w
   zpack.json              Zebar widgets
   bar.html launcher.html power.html wallpaper.html keybinds.html settings.html
+  quick.html              sound / network / power / calendar panels under the bar's icons
   island.html             MediaControll dynamic island (opened by hovering the bar's media capsule)
   dock.html               nwg-dock: open apps at the bottom of the screen
   keybinds.json           keybindings: the GlazeWM config and the cheat sheet are generated from it
@@ -90,9 +129,12 @@ pack/                     -> ~/.glzr/zebar/mw4w
   defaults.json           default settings (your changes go to settings.json)
   scripts/mw4w.ps1        the brain: colors, GlazeWM config, wallpapers, power, gamemode, bar, media loop, updates
   scripts/Native.cs       Win32: app icons, wallpaper, dominant color, taskbar, per-app volume
+  bin/mw4w-shell.exe      the shell when MW4W replaces Explorer (source: shell/)
   bin/winmask.exe         SUPER doesn't open Start (CTRL+Esc does), SUPER+mouse, workspace slide, hides the taskbar,
                           handles popup keybindings, @mw4w and shell-exec itself (see Speed)
   lib/                    zebar.js (bundled, works offline), shared JS/CSS, icons.js (line icons, media helpers)
+installer/                MW4W-Setup.exe: the repo in one exe that runs install.ps1 (build.sh builds it)
+shell/                    mw4w-shell source (GOOS=windows go build -trimpath -ldflags "-H windowsgui -s -w" -o ../pack/bin/mw4w-shell.exe)
 helper/                   winmask source (go build -trimpath -ldflags "-H windowsgui -s -w" -o ../pack/bin/winmask.exe)
 wallpapers/               7 wallpapers
 ```
@@ -111,6 +153,7 @@ On Windows the expensive part is starting a process (0.3–0.5 s here: ShellExec
 - `winmask` handles the SUPER keybindings from `keybinds.json` itself: `@widget` shows the ready popup, `shell-exec` starts through CreateProcess (what it can't do — URIs, `msedge`, elevation — goes on to GlazeWM), and `@mw4w` goes to a warm `mw4w.ps1 serve` that `winmask` keeps in the background. Widgets do the same through `winmask --mw4w <command>`.
 - Fast workspace switching interrupts the running slide instead of queueing more. The slide draws DWM thumbnails (like Task View), no screenshots.
 - SUPER+RMB on a tiled window: when the edge is shared by exactly two containers, `winmask` moves the windows on both sides itself (without waiting for GlazeWM and the apps), and GlazeWM gets a single `resize` on release. Other layouts (e.g. three columns) still use live `resize` commands, because GlazeWM spreads the change over all neighboring windows.
+- The liquid glass bakes its displacement and light maps only for the bezel band and copies the straight edges (3–6× faster than per pixel), and hidden popups check `state.json` every 6 s instead of 1.5 s.
 - Don't use quotes in `shell-exec`: GlazeWM misparses them, and a program it can't find won't start and blocks on an error dialog.
 
 ## Limitations
