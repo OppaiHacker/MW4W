@@ -216,6 +216,7 @@
       }
       /* clock: time over date */
       .clock {
+        cursor: pointer;
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -300,7 +301,7 @@
 
       <div class="center">
         <span class="i" data-act="launcher" title="Left: Apps (SUPER+CTRL+Enter)&#10;Right: Keybindings" id="grid"></span>
-        <div class="clock" id="clock"><b></b><small></small></div>
+        <div class="clock" id="clock" data-act="clock"><b></b><small></small></div>
         <span class="i" data-act="notifications" title="Notifications" id="bell"></span>
       </div>
 
@@ -438,7 +439,7 @@
 
         const a = o.audio?.defaultPlaybackDevice;
         set('vol', a ? svg(volIcon(a.volume, a.isMuted), 18) + `<span>${a.isMuted ? 'muted' : Math.round(a.volume) + '%'}</span>` : '');
-        $('vol').title = a ? `${a.name} — scroll to change, right click: sound settings` : '';
+        $('vol').title = a ? `${a.name} — click: sound panel, scroll: volume, right click: mute` : '';
 
         const n = o.network;
         if (n) {
@@ -466,17 +467,18 @@
       const media = () => providers.outputMap.media;
 
       // ---- hover: the capsule opens the dynamic island (island.html) right on top of itself
-      let islandWin;
-      async function findIsland() {
+      const wins = {};
+      async function findWin(name) {
+        const title = `Zebar - mw4w / ${name}`;
         try {
-          if (islandWin && (await islandWin.title()) === 'Zebar - mw4w / island') return islandWin;
+          if (wins[name] && (await wins[name].title()) === title) return wins[name];
         } catch {}
-        for (const w of await widget.tauriWindow.constructor.getAll()) if ((await w.title()) === 'Zebar - mw4w / island') return (islandWin = w);
+        for (const w of await widget.tauriWindow.constructor.getAll()) if ((await w.title()) === title) return (wins[name] = w);
         return null;
       }
       async function openIsland() {
         const win = widget.tauriWindow;
-        const island = await findIsland();
+        const island = await findWin('island');
         if (!island) return zebar.startWidgetPreset('island', 'preload');
         const [pos, size, sf] = await Promise.all([win.outerPosition(), win.outerSize(), win.scaleFactor()]);
         const r = $('cap').getBoundingClientRect();
@@ -492,6 +494,26 @@
         await island.setPosition({ type: 'Logical', x, y });
         await island.show();
       }
+      // ---- quick panels (quick.html) drop down under their icon: sound, network, power, calendar
+      async function openQuick(panel, el) {
+        const last = JSON.parse(localStorage.getItem('mw4w.quick.closed') ?? '{}');
+        // this click took the focus from the open panel (which closed itself): it was meant to close it
+        if (last.panel === panel && Date.now() - last.t < 350) return;
+        const win = widget.tauriWindow;
+        const q = await findWin('quick');
+        if (!q) return zebar.startWidgetPreset('quick', 'preload');
+        const [pos, size, sf] = await Promise.all([win.outerPosition(), win.outerSize(), win.scaleFactor()]);
+        const r = el.getBoundingClientRect();
+        const W = 380; // quick.html window: 360px panel + 10px margins
+        const left = pos.x / sf;
+        const cx = left + r.left + r.width / 2;
+        const x = Math.round(Math.max(left, Math.min(left + size.width / sf - W, cx - W / 2)));
+        const y = Math.round(pos.y / sf + r.bottom + 2);
+        localStorage.setItem('mw4w.quick', JSON.stringify({ t: Date.now(), panel, x: x + 10, y: y + 6, ox: Math.round(cx - x - 10) }));
+        await q.setPosition({ type: 'Logical', x, y });
+        await q.show();
+      }
+
       let hoverTimer;
       $('cap').addEventListener('mouseenter', () => (hoverTimer = setTimeout(openIsland, 220)));
       $('cap').addEventListener('mouseleave', () => clearTimeout(hoverTimer));
@@ -523,13 +545,13 @@
           case 'updates':
             return send('run', btoa('winget upgrade --all'));
           case 'network':
-            return open('ms-settings:network');
+            return openQuick('network', el);
           case 'battery':
-            return open('ms-settings:batterysaver');
-          case 'volume': {
-            const d = o.audio?.defaultPlaybackDevice;
-            return d && o.audio.setMute(!d.isMuted);
-          }
+            return openQuick('battery', el);
+          case 'volume':
+            return openQuick('audio', el);
+          case 'clock':
+            return openQuick('calendar', el);
         }
       });
 
@@ -538,7 +560,10 @@
         if (e.target.closest('#cap')) return media()?.next();
         const el = e.target.closest('[data-tray],[data-act]');
         if (el?.dataset.tray) providers.outputMap.systray?.onRightClick(el.dataset.tray);
-        else if (el?.dataset.act === 'volume') open('ms-settings:sound');
+        else if (el?.dataset.act === 'volume') {
+          const d = providers.outputMap.audio?.defaultPlaybackDevice;
+          if (d) providers.outputMap.audio.setMute(!d.isMuted);
+        } else if (el?.dataset.act === 'network') open('ms-settings:network');
         else if (el?.dataset.act === 'launcher') popup('keybinds');
         else if (el?.dataset.act === 'settings') popup('wallpaper');
       });

@@ -16,6 +16,21 @@
 | keybindings.sh       | `keybinds`: cheat sheet generated from `keybinds.json`                                                 |
 | gamemode.sh          | SUPER+ALT+G: no gaps, borders or transparency                                                          |
 
+## Quick panels
+
+The bar's icons drop down panels (`quick.html`) instead of opening Windows Settings:
+
+| Click | Panel |
+| --- | --- |
+| volume | **Sound**: output and microphone volume/mute, pick the output/input device, per-app mixer. Scroll = volume, right click = mute |
+| network | **Network**: Wi-Fi and Bluetooth switches, connection and traffic, Wi-Fi list — click to connect (password field for new networks), click the connected one to disconnect |
+| battery | **Power**: charge, time left, health, draw, brightness (laptop screens) and power mode (efficiency / balanced / performance) |
+| clock | **Calendar** |
+
+Zebar's providers give volume, devices, network and battery; `mw4w.ps1` adds the rest (Core Audio sessions, `IPolicyConfig`
+for the default device, WinRT `WiFiAdapter` and `Radio`, the power mode overlay, WMI brightness) through `cache/quick.json`
+and `cache/wifi.json`. Since Windows 11 24H2, listing Wi-Fi networks needs location access for desktop apps; the panel links it.
+
 ## Media (MediaControll)
 
 The capsule shows the cover, the title and an equalizer (dots when paused); it hides when nothing plays.
@@ -106,6 +121,7 @@ install.ps1 / uninstall.ps1
 pack/                     -> ~/.glzr/zebar/mw4w
   zpack.json              Zebar widgets
   bar.html launcher.html power.html wallpaper.html keybinds.html settings.html
+  quick.html              sound / network / power / calendar panels under the bar's icons
   island.html             MediaControll dynamic island (opened by hovering the bar's media capsule)
   dock.html               nwg-dock: open apps at the bottom of the screen
   keybinds.json           keybindings: the GlazeWM config and the cheat sheet are generated from it

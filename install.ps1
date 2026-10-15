@@ -61,7 +61,7 @@ if ($cur -and (Test-Path $cur) -and -not $cur.StartsWith($Walls, 'OrdinalIgnoreC
 Step 'Zebar: start the MW4W bar on launch'
 $zs = Join-Path $Glzr 'zebar\settings.json'
 # Popups start hidden ("preload") so they open instantly later.
-$popups = foreach ($w in 'launcher', 'power', 'wallpaper', 'keybinds', 'settings', 'island') { @{ pack = 'mw4w'; widget = $w; preset = 'preload' } }
+$popups = foreach ($w in 'launcher', 'power', 'wallpaper', 'keybinds', 'settings', 'island', 'quick') { @{ pack = 'mw4w'; widget = $w; preset = 'preload' } }
 Write-Utf8 $zs (@{
     '$schema'      = 'https://github.com/glzr-io/zebar/raw/v3.3.1/resources/settings-schema.json'
     startupConfigs = @(@{ pack = 'mw4w'; widget = 'bar'; preset = 'default' }, @{ pack = 'mw4w'; widget = 'dock'; preset = 'default' }) + $popups
