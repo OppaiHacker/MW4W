@@ -57,6 +57,9 @@ var (
 	procGetCursorPos             = user32.NewProc("GetCursorPos")
 	procDwmSetWindowAttribute    = dwmapi.NewProc("DwmSetWindowAttribute")
 	procDwmExtendFrameIntoClient = dwmapi.NewProc("DwmExtendFrameIntoClientArea")
+	procSetWindowThemeAttr       = windows.NewLazySystemDLL("uxtheme.dll").NewProc("SetWindowThemeAttribute")
+	procGetStockObject           = windows.NewLazySystemDLL("gdi32.dll").NewProc("GetStockObject")
+	procInvalidateRect           = user32.NewProc("InvalidateRect")
 )
 
 const (
@@ -127,7 +130,15 @@ func runUI(a *App, path string, show bool) {
 	className, _ = windows.UTF16PtrFromString("MW4W.Files")
 	cursor, _, _ := procLoadCursorW.Call(0, 32512) // IDC_ARROW
 	shell32.Load()
-	icon, _, _ := procLoadImageW.Call(shell32.Handle(), 4, 1, 0, 0, 0x40|0x8000) // shell32 #4: folder; LR_DEFAULTSIZE|LR_SHARED
+	// own icon (winres/icon.ico, resource #1 in rsrc_windows_amd64.syso); IMAGE_ICON, LR_DEFAULTSIZE|LR_SHARED
+	icon, _, _ := procLoadImageW.Call(inst, 1, 1, 0, 0, 0x40|0x8000)
+	dpi, _, _ := user32.NewProc("GetDpiForSystem").Call()
+	sm, _, _ := procGetSystemMetricsForDpi.Call(49, dpi) // SM_CXSMICON
+	iconSm, _, _ := procLoadImageW.Call(inst, 1, 1, sm, sm, 0x8000)
+	if icon == 0 {
+		icon, _, _ = procLoadImageW.Call(shell32.Handle(), 4, 1, 0, 0, 0x40|0x8000) // shell32 #4: folder
+		iconSm = icon
+	}
 	type wndClassEx struct {
 		size, style            uint32
 		proc                   uintptr
@@ -136,7 +147,9 @@ func runUI(a *App, path string, show bool) {
 		menu, class            *uint16
 		iconSm                 uintptr
 	}
-	wc := wndClassEx{style: 0x0003, proc: syscall.NewCallback(wndProc), inst: inst, icon: icon, cursor: cursor, class: className, iconSm: icon}
+	// black = clear on the extended frame: erasing on resize leaves no stale pixels behind the transparent page
+	black, _, _ := procGetStockObject.Call(4) // BLACK_BRUSH
+	wc := wndClassEx{style: 0x0003, proc: syscall.NewCallback(wndProc), inst: inst, icon: icon, cursor: cursor, bg: black, class: className, iconSm: iconSm}
 	wc.size = uint32(unsafe.Sizeof(wc))
 	procRegisterClassExW.Call(uintptr(unsafe.Pointer(&wc)))
 
@@ -311,6 +324,9 @@ func newWin(query string, visible bool) *win {
 	procDwmSetWindowAttribute.Call(hwnd, 33, uintptr(unsafe.Pointer(&round)), 4)
 	margins := [4]int32{-1, -1, -1, -1}
 	procDwmExtendFrameIntoClient.Call(hwnd, uintptr(unsafe.Pointer(&margins)))
+	// DWM draws the title and icon on the extended frame, under the page's header: not those
+	wta := [2]uint32{3, 3} // WTNCA_NODRAWCAPTION | WTNCA_NODRAWICON, mask
+	procSetWindowThemeAttr.Call(hwnd, 1, uintptr(unsafe.Pointer(&wta)), 8) // WTA_NONCLIENT
 	procSetWindowPos.Call(hwnd, 0, 0, 0, 0, 0, swpFlags)
 
 	wv := edge.NewChromium()
@@ -379,6 +395,17 @@ func pageCommand(w *win, m string) {
 func wndProc(hwnd, msg, wp, lp uintptr) uintptr {
 	w := wins[hwnd]
 	switch msg {
+	// The client is the whole window, so DefWindowProc's classic caption and frame painting
+	// (title change, activation, WM_NCPAINT) lands on the page's surface and stays there as a ghost.
+	case 0x0085: // WM_NCPAINT: DWM draws the border and shadow
+		return 0
+	case 0x0086: // WM_NCACTIVATE: lParam -1 = update the state without repainting
+		r, _, _ := procDefWindowProcW.Call(hwnd, msg, wp, ^uintptr(0))
+		return r
+	case 0x000C: // WM_SETTEXT paints the caption: erase it again (the black class brush)
+		r, _, _ := procDefWindowProcW.Call(hwnd, msg, wp, lp)
+		procInvalidateRect.Call(hwnd, 0, 1)
+		return r
 	case wmNcCalcSize:
 		if wp != 0 {
 			// no title bar or borders: the client is the whole window; maximized, keep it on screen

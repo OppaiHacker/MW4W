@@ -188,6 +188,7 @@ Optional: `winget install Alacritty.Alacritty DEVCOM.JetBrainsMonoNerdFont` befo
 | SUPER + CTRL + P (or Q)      | power menu                          |
 | SUPER + SHIFT + A            | workspace slide on/off              |
 | SUPER + CTRL + S             | MW4W settings                       |
+| SUPER + CTRL + M             | displays, workspaces per display    |
 | SUPER + CTRL + K             | all keybindings                     |
 | SUPER + CTRL + B / SHIFT + B | show/hide bar / reload bar          |
 | SUPER + SHIFT + R            | reload config                       |

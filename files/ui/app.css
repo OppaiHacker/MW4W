@@ -870,7 +870,18 @@ svg.i {
   display: flex;
 }
 #pane .hdr {
-  padding: 0 8px 0 16px;
+  padding: 0 48px 0 16px; /* room for the window's close button */
+}
+/* the window's close button stays in the top right corner; the pane has no X of its own
+   (Ctrl+I or View options hide it) */
+.preview #b-close {
+  position: fixed;
+  top: 7px;
+  right: 8px;
+  z-index: 5;
+}
+#pv-close {
+  display: none;
 }
 #pane .hdr b {
   flex: 1;

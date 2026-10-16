@@ -413,4 +413,215 @@ namespace Mw4w
         [PreserveSig] int SetMute(bool mute, ref Guid ctx);
         [PreserveSig] int GetMute(out bool mute);
     }
+
+    // One active display. Mode is "WxH@Hz" unrotated; X/Y/Width/Height are its desktop rect.
+    public class Display
+    {
+        public string Device { get; set; }
+        public string Name { get; set; }
+        public bool Primary { get; set; }
+        public int X { get; set; }
+        public int Y { get; set; }
+        public int Width { get; set; }
+        public int Height { get; set; }
+        public string Mode { get; set; }
+        public int Orientation { get; set; }
+        public int Scale { get; set; }
+        public int[] Scales { get; set; }
+        public string[] Modes { get; set; }
+    }
+
+    // Displays: modes and layout through GDI, names and scale through DisplayConfig. The scale uses
+    // DISPLAYCONFIG_DEVICE_INFO_GET/SET_DPI_SCALE (-3/-4): undocumented, what Settings > Display uses.
+    public static class Displays
+    {
+        static readonly int[] ScaleSteps = { 100, 125, 150, 175, 200, 225, 250, 300, 350, 400, 450, 500 };
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        struct DEVMODE
+        {
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string dmDeviceName;
+            public short dmSpecVersion, dmDriverVersion, dmSize, dmDriverExtra;
+            public int dmFields, dmPositionX, dmPositionY, dmDisplayOrientation, dmDisplayFixedOutput;
+            public short dmColor, dmDuplex, dmYResolution, dmTTOption, dmCollate;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string dmFormName;
+            public short dmLogPixels;
+            public int dmBitsPerPel, dmPelsWidth, dmPelsHeight, dmDisplayFlags, dmDisplayFrequency,
+                dmICMMethod, dmICMIntent, dmMediaType, dmDitherType, dmReserved1, dmReserved2, dmPanningWidth, dmPanningHeight;
+        }
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        struct DISPLAY_DEVICE
+        {
+            public int cb;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string DeviceName;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string DeviceString;
+            public int StateFlags;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string DeviceID;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string DeviceKey;
+        }
+
+        [StructLayout(LayoutKind.Sequential)] struct LUID { public uint Low; public int High; }
+
+        [StructLayout(LayoutKind.Sequential)]
+        struct PATH_INFO
+        {
+            public LUID srcAdapter; public uint srcId, srcModeIdx, srcFlags;
+            public LUID tgtAdapter; public uint tgtId, tgtModeIdx; public int tech, rotation, scaling;
+            public uint rateN, rateD; public int scanline, available; public uint tgtFlags;
+            public uint flags;
+        }
+
+        [StructLayout(LayoutKind.Sequential, Size = 64)] struct MODE_INFO { public int type; }
+        [StructLayout(LayoutKind.Sequential)] struct HEADER { public int type; public int size; public LUID adapter; public uint id; }
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        struct SOURCE_NAME { public HEADER h; [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string gdi; }
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        struct TARGET_NAME
+        {
+            public HEADER h; public uint flags; public int tech; public ushort edidMan, edidProd; public uint connector;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)] public string friendly;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string path;
+        }
+
+        [StructLayout(LayoutKind.Sequential)] struct DPI_GET { public HEADER h; public int min, cur, max; }
+        [StructLayout(LayoutKind.Sequential)] struct DPI_SET { public HEADER h; public int rel; }
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        static extern bool EnumDisplayDevices(string device, uint i, ref DISPLAY_DEVICE dd, uint flags);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        static extern bool EnumDisplaySettingsEx(string device, int mode, ref DEVMODE dm, int flags);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        static extern int ChangeDisplaySettingsEx(string device, ref DEVMODE dm, IntPtr hwnd, int flags, IntPtr param);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        static extern int ChangeDisplaySettingsEx(string device, IntPtr dm, IntPtr hwnd, int flags, IntPtr param);
+        [DllImport("user32.dll")] static extern int GetDisplayConfigBufferSizes(uint flags, out uint paths, out uint modes);
+        [DllImport("user32.dll")]
+        static extern int QueryDisplayConfig(uint flags, ref uint np, [Out] PATH_INFO[] paths, ref uint nm, [Out] MODE_INFO[] modes, IntPtr topology);
+        [DllImport("user32.dll")] static extern int DisplayConfigGetDeviceInfo(ref SOURCE_NAME r);
+        [DllImport("user32.dll")] static extern int DisplayConfigGetDeviceInfo(ref TARGET_NAME r);
+        [DllImport("user32.dll")] static extern int DisplayConfigGetDeviceInfo(ref DPI_GET r);
+        [DllImport("user32.dll")] static extern int DisplayConfigSetDeviceInfo(ref DPI_SET r);
+
+        static DEVMODE NewMode() { var m = new DEVMODE(); m.dmSize = (short)Marshal.SizeOf(typeof(DEVMODE)); return m; }
+
+        static HEADER Header(int type, Type t, LUID adapter, uint id)
+        {
+            var h = new HEADER(); h.type = type; h.size = Marshal.SizeOf(t); h.adapter = adapter; h.id = id; return h;
+        }
+
+        // the active path showing GDI device `device` (\\.\DISPLAY1)
+        static bool PathOf(string device, out PATH_INFO path)
+        {
+            path = new PATH_INFO();
+            uint np, nm;
+            if (GetDisplayConfigBufferSizes(2, out np, out nm) != 0) return false; // QDC_ONLY_ACTIVE_PATHS
+            var paths = new PATH_INFO[np];
+            var modes = new MODE_INFO[nm];
+            if (QueryDisplayConfig(2, ref np, paths, ref nm, modes, IntPtr.Zero) != 0) return false;
+            for (int i = 0; i < np; i++)
+            {
+                var s = new SOURCE_NAME();
+                s.h = Header(1, typeof(SOURCE_NAME), paths[i].srcAdapter, paths[i].srcId);
+                if (DisplayConfigGetDeviceInfo(ref s) == 0 && s.gdi == device) { path = paths[i]; return true; }
+            }
+            return false;
+        }
+
+        // recommended scale index, current index, highest index
+        static int[] DpiOf(PATH_INFO p)
+        {
+            var d = new DPI_GET();
+            d.h = Header(-3, typeof(DPI_GET), p.srcAdapter, p.srcId);
+            if (DisplayConfigGetDeviceInfo(ref d) != 0) return null;
+            int rec = -d.min;
+            return new[] { rec, Math.Min(rec + d.cur, ScaleSteps.Length - 1), Math.Min(rec + d.max, ScaleSteps.Length - 1) };
+        }
+
+        public static Display[] List()
+        {
+            var list = new List<Display>();
+            var dd = new DISPLAY_DEVICE();
+            dd.cb = Marshal.SizeOf(dd);
+            for (uint i = 0; EnumDisplayDevices(null, i, ref dd, 0); i++, dd.cb = Marshal.SizeOf(dd))
+            {
+                if ((dd.StateFlags & 1) == 0) continue; // not DISPLAY_DEVICE_ATTACHED_TO_DESKTOP
+                var cur = NewMode();
+                if (!EnumDisplaySettingsEx(dd.DeviceName, -1, ref cur, 0)) continue; // ENUM_CURRENT_SETTINGS
+                bool turned = (cur.dmDisplayOrientation & 1) != 0;
+                var d = new Display
+                {
+                    Device = dd.DeviceName, Name = "", Primary = (dd.StateFlags & 4) != 0,
+                    X = cur.dmPositionX, Y = cur.dmPositionY, Width = cur.dmPelsWidth, Height = cur.dmPelsHeight,
+                    Orientation = cur.dmDisplayOrientation, Scale = 100, Scales = new[] { 100 },
+                    Mode = (turned ? cur.dmPelsHeight : cur.dmPelsWidth) + "x" + (turned ? cur.dmPelsWidth : cur.dmPelsHeight) + "@" + cur.dmDisplayFrequency,
+                };
+                var all = new List<int[]>();
+                var seen = new HashSet<string>();
+                var m = NewMode();
+                for (int k = 0; EnumDisplaySettingsEx(dd.DeviceName, k, ref m, 0); k++)
+                {
+                    if (m.dmBitsPerPel != 32) continue;
+                    int w = m.dmPelsWidth, h = m.dmPelsHeight;
+                    if ((m.dmDisplayOrientation & 1) != 0) { w = m.dmPelsHeight; h = m.dmPelsWidth; }
+                    if (seen.Add(w + "x" + h + "@" + m.dmDisplayFrequency)) all.Add(new[] { w, h, m.dmDisplayFrequency });
+                }
+                all.Sort((a, b) => a[0] * a[1] != b[0] * b[1] ? b[0] * b[1] - a[0] * a[1] : b[2] - a[2]);
+                d.Modes = all.ConvertAll(a => a[0] + "x" + a[1] + "@" + a[2]).ToArray();
+                PATH_INFO p;
+                if (PathOf(dd.DeviceName, out p))
+                {
+                    var t = new TARGET_NAME();
+                    t.h = Header(2, typeof(TARGET_NAME), p.tgtAdapter, p.tgtId);
+                    if (DisplayConfigGetDeviceInfo(ref t) == 0) d.Name = t.friendly;
+                    if (d.Name == "" && p.tech == unchecked((int)0x80000000)) d.Name = "Built-in display"; // OUTPUT_TECHNOLOGY_INTERNAL
+                    var dpi = DpiOf(p);
+                    if (dpi != null)
+                    {
+                        d.Scale = ScaleSteps[dpi[1]];
+                        var sc = new int[dpi[2] + 1];
+                        Array.Copy(ScaleSteps, sc, sc.Length);
+                        d.Scales = sc;
+                    }
+                }
+                if (d.Name == "") d.Name = dd.DeviceString;
+                list.Add(d);
+            }
+            return list.ToArray();
+        }
+
+        // Stages a mode (width/height unrotated) for Commit. 0 = DISP_CHANGE_SUCCESSFUL.
+        public static int Stage(string device, int w, int h, int hz, int x, int y, int orientation, bool primary)
+        {
+            var dm = NewMode();
+            EnumDisplaySettingsEx(device, -1, ref dm, 0);
+            bool turned = (orientation & 1) != 0;
+            dm.dmPelsWidth = turned ? h : w;
+            dm.dmPelsHeight = turned ? w : h;
+            dm.dmDisplayFrequency = hz;
+            dm.dmPositionX = x;
+            dm.dmPositionY = y;
+            dm.dmDisplayOrientation = orientation;
+            dm.dmFields = 0x20 | 0x80 | 0x80000 | 0x100000 | 0x400000; // position, orientation, width, height, frequency
+            // CDS_UPDATEREGISTRY | CDS_NORESET (| CDS_SET_PRIMARY)
+            return ChangeDisplaySettingsEx(device, ref dm, IntPtr.Zero, 0x10000000 | 1 | (primary ? 0x10 : 0), IntPtr.Zero);
+        }
+
+        public static int Commit() { return ChangeDisplaySettingsEx(null, IntPtr.Zero, IntPtr.Zero, 0, IntPtr.Zero); }
+
+        public static int SetScale(string device, int percent)
+        {
+            PATH_INFO p;
+            int idx = Array.IndexOf(ScaleSteps, percent);
+            if (idx < 0 || !PathOf(device, out p)) return -1;
+            var dpi = DpiOf(p);
+            if (dpi == null) return -1;
+            var s = new DPI_SET();
+            s.h = Header(-4, typeof(DPI_SET), p.srcAdapter, p.srcId);
+            s.rel = idx - dpi[0];
+            return DisplayConfigSetDeviceInfo(ref s);
+        }
+    }
 }

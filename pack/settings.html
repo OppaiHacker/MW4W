@@ -172,13 +172,14 @@
       <main id="form"></main>
       <footer>
         <button id="keys">Edit keybindings</button>
+        <button id="displays">Displays</button>
         <button id="dir">Open config folder</button>
         <button id="reset" class="right">Reset to defaults</button>
       </footer>
     </div>
 
     <script type="module">
-      import { packDir, mw4w, send, open, b64, json, settings, popup, watchState, esc } from './lib/mw4w.js';
+      import { packDir, mw4w, send, open, b64, json, settings, popup, watchState, esc, openPopup } from './lib/mw4w.js';
 
       const close = popup({ blur: false });
 
@@ -274,6 +275,7 @@
       document.getElementById('close').onclick = close;
       document.getElementById('keys').onclick = () => mw4w('run', b64(`notepad "${packDir}\\keybinds.json"`));
       document.getElementById('dir').onclick = () => open(packDir);
+      document.getElementById('displays').onclick = () => (close(), openPopup('displays'));
       document.getElementById('reset').onclick = async () => {
         resetting = true;
         send('set', b64(JSON.stringify(await json('defaults.json', {}))));

@@ -151,8 +151,9 @@ export function liquidGlass(host, { place, radius = 20, bezel = 12, strength = 9
   let baked = '';
   function layout() {
     const r = host.getBoundingClientRect();
-    const w = size?.w ?? r.width;
-    const h = size?.h ?? r.height;
+    // layout size, not the rect: a pop-in scale() would bake the glass smaller than the host
+    const w = size?.w ?? host.offsetWidth;
+    const h = size?.h ?? host.offsetHeight;
     if (w < 4 || h < 4) return;
     const key = `${w}x${h}`;
     if (key !== baked) {

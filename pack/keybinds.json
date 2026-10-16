@@ -78,6 +78,7 @@
   { "group": "Actions", "keys": ["lwin+alt+w"], "desc": "Wallpaper automation on/off", "cmd": ["@mw4w wallpaper-auto"] },
   { "group": "Actions", "keys": ["lwin+control+k"], "desc": "Keybindings (this sheet)", "cmd": ["@widget keybinds"] },
   { "group": "Actions", "keys": ["lwin+control+s"], "desc": "MW4W Settings", "cmd": ["@widget settings"] },
+  { "group": "Actions", "keys": ["lwin+control+m"], "desc": "Displays and workspaces per display", "cmd": ["@widget displays"] },
   { "group": "Actions", "keys": ["lwin+shift+b"], "desc": "Reload status bar", "cmd": ["@mw4w bar-restart"] },
   { "group": "Actions", "keys": ["lwin+control+b"], "desc": "Toggle status bar", "cmd": ["@mw4w bar-toggle"] },
   { "group": "Actions", "keys": ["lwin+shift+a"], "desc": "Toggle animations", "cmd": ["@mw4w toggle animations"] },

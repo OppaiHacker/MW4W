@@ -7,12 +7,13 @@
     <link rel="stylesheet" href="lib/base.css" />
     <style>
       /* Quick panels under the bar's icons (ML4W's waybar popups): sound, network, battery, calendar.
-         The window is 380px wide and as tall as the panel (setSize), so it never covers more than it shows. */
+         The window is 408px wide and as tall as the panel (setSize), so it never covers more than it shows.
+         The margins hold the whole shadow: a window can't draw past its edge, a cut shadow looks solid. */
       html.preload body {
         visibility: hidden;
       }
       body {
-        padding: 6px 10px 22px;
+        padding: 10px 24px 34px;
       }
       .panel {
         position: relative;
@@ -23,7 +24,7 @@
         border: 0;
         border-radius: 22px;
         background: none;
-        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.45);
         animation: drop 0.24s cubic-bezier(0.34, 1.36, 0.5, 1);
         transform-origin: var(--ox, 50%) 0;
       }
@@ -399,6 +400,8 @@
         tint: 'rgba(var(--surface-rgb), 0.62)',
       });
       glass.setSource(`cache/glass.jpg?v=${Date.now()}`);
+      // the wallpaper's offset was measured mid pop-in (scaled): measure again once it's done
+      $panel.addEventListener('animationend', () => glass.layout());
 
       let quick = {};
       let wifi = null;
@@ -598,10 +601,10 @@
       // the window follows the panel's height: transparent rows would still eat clicks
       let lastH = 0;
       function fit() {
-        const h = Math.ceil($panel.getBoundingClientRect().height) + 28;
+        const h = Math.ceil($panel.getBoundingClientRect().height) + 44;
         if (h === lastH || !win.setSize) return;
         lastH = h;
-        win.setSize({ type: 'Logical', width: 380, height: h }).catch(() => {});
+        win.setSize({ type: 'Logical', width: 408, height: h }).catch(() => {});
       }
 
       // ---- input

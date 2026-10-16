@@ -137,8 +137,8 @@
           "anchor": "center",
           "offsetX": "0px",
           "offsetY": "0px",
-          "width": "640px",
-          "height": "520px",
+          "width": "920px",
+          "height": "560px",
           "monitorSelection": {
             "type": "primary"
           },
@@ -153,8 +153,8 @@
           "anchor": "center",
           "offsetX": "0px",
           "offsetY": "0px",
-          "width": "640px",
-          "height": "520px",
+          "width": "920px",
+          "height": "560px",
           "monitorSelection": {
             "type": "primary"
           },
@@ -415,6 +415,52 @@
       ]
     },
     {
+      "name": "displays",
+      "htmlPath": "./displays.html",
+      "zOrder": "normal",
+      "shownInTaskbar": false,
+      "focused": true,
+      "resizable": false,
+      "transparent": true,
+      "includeFiles": [
+        "**/*"
+      ],
+      "caching": {
+        "defaultDuration": 0,
+        "rules": []
+      },
+      "privileges": {
+        "shellCommands": [
+          {
+            "program": "powershell",
+            "argsRegex": ".*"
+          },
+          {
+            "program": "explorer",
+            "argsRegex": ".*"
+          }
+        ]
+      },
+      "presets": [
+        {
+          "name": "default",
+          "anchor": "center",
+          "offsetX": "0px",
+          "offsetY": "0px",
+          "width": "760px",
+          "height": "760px",
+          "monitorSelection": {
+            "type": "primary"
+          },
+          "dockToEdge": {
+            "enabled": false,
+            "edge": null,
+            "windowMargin": "0px"
+          }
+        }
+      ]
+    },
+    {
       "name": "island",
       "htmlPath": "./island.html",
       "zOrder": "top_most",
@@ -509,7 +555,7 @@
           "anchor": "top_left",
           "offsetX": "0px",
           "offsetY": "0px",
-          "width": "380px",
+          "width": "408px",
           "height": "560px",
           "monitorSelection": {
             "type": "primary"
@@ -525,7 +571,7 @@
           "anchor": "top_left",
           "offsetX": "0px",
           "offsetY": "0px",
-          "width": "380px",
+          "width": "408px",
           "height": "560px",
           "monitorSelection": {
             "type": "primary"

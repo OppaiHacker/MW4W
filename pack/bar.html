@@ -517,12 +517,12 @@
         if (!q) return zebar.startWidgetPreset('quick', 'preload');
         const [pos, size, sf] = await Promise.all([win.outerPosition(), win.outerSize(), win.scaleFactor()]);
         const r = el.getBoundingClientRect();
-        const W = 380; // quick.html window: 360px panel + 10px margins
+        const W = 408; // quick.html window: 360px panel + 24px margins (room for its shadow)
         const left = pos.x / sf;
         const cx = left + r.left + r.width / 2;
-        const x = Math.round(Math.max(left, Math.min(left + size.width / sf - W, cx - W / 2)));
-        const y = Math.round(pos.y / sf + r.bottom + 2);
-        localStorage.setItem('mw4w.quick', JSON.stringify({ t: Date.now(), panel, x: x + 10, y: y + 6, ox: Math.round(cx - x - 10) }));
+        const x = Math.round(Math.max(left - 14, Math.min(left + size.width / sf - W + 14, cx - W / 2)));
+        const y = Math.round(pos.y / sf + r.bottom - 2);
+        localStorage.setItem('mw4w.quick', JSON.stringify({ t: Date.now(), panel, x, y, ox: Math.round(cx - x - 24) }));
         await q.setPosition({ type: 'Logical', x, y });
         await q.show();
       }

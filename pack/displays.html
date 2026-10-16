@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="colors.css" />
+    <link rel="stylesheet" href="lib/base.css" />
+    <style>
+      body {
+        padding: 10px;
+      }
+      .panel {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 16px 18px 10px;
+      }
+      header h1 {
+        font-size: 17px;
+        margin-right: auto;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+      header h1 .ic {
+        color: var(--primary);
+        font-size: 19px;
+      }
+      #status {
+        color: var(--textDim);
+        font-size: 12px;
+      }
+      header button {
+        width: 30px;
+        height: 30px;
+        border-radius: 9px;
+      }
+      header button:hover {
+        background: rgba(var(--primary-rgb), 0.2);
+      }
+      main {
+        flex: 1;
+        overflow-y: auto;
+        padding: 0 18px 10px;
+      }
+      section {
+        background: rgba(var(--surface2-rgb), 0.8);
+        border-radius: 14px;
+        padding: 10px 14px;
+        margin-bottom: 12px;
+      }
+      h2 {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--primary);
+        margin: 4px 0 12px 2px;
+      }
+      /* the layout: displays to scale, drag to arrange */
+      #map {
+        position: relative;
+        height: 210px;
+        border-radius: 10px;
+        background: rgba(var(--surface-rgb), 0.6);
+      }
+      .mon {
+        position: absolute;
+        display: grid;
+        place-content: center;
+        text-align: center;
+        gap: 2px;
+        border-radius: 8px;
+        background: rgba(var(--surface3-rgb), 1);
+        border: 2px solid rgba(var(--outline-rgb), 0.9);
+        cursor: grab;
+        overflow: hidden;
+      }
+      .mon b {
+        font-size: 22px;
+      }
+      .mon small {
+        color: var(--textDim);
+        font-size: 11px;
+      }
+      .mon.sel {
+        border-color: var(--primary);
+        background: rgba(var(--primary-rgb), 0.25);
+      }
+      .mon.drag {
+        cursor: grabbing;
+        opacity: 0.85;
+      }
+      .tools {
+        display: flex;
+        gap: 6px;
+        margin-top: 10px;
+        flex-wrap: wrap;
+      }
+      .tools button,
+      footer button,
+      #revert button {
+        padding: 8px 12px;
+        border-radius: 10px;
+        background: rgba(var(--surface3-rgb), 1);
+      }
+      .tools button:hover,
+      footer button:hover,
+      #revert button:hover {
+        background: var(--primary);
+        color: var(--onPrimary);
+      }
+      label {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 8px 0;
+        border-top: 1px solid rgba(var(--outline-rgb), 0.25);
+        font-weight: 500;
+      }
+      label:first-of-type {
+        border-top: 0;
+      }
+      label select {
+        width: 200px;
+      }
+      input[type='checkbox'] {
+        appearance: none;
+        width: 42px;
+        height: 24px;
+        border-radius: 12px;
+        background: rgba(var(--surface3-rgb), 1);
+        border: 1px solid rgba(var(--outline-rgb), 0.8);
+        position: relative;
+        cursor: pointer;
+      }
+      input[type='checkbox']::after {
+        content: '';
+        position: absolute;
+        top: 3px;
+        left: 3px;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: var(--textDim);
+        transition: transform 0.18s;
+      }
+      input[type='checkbox']:checked {
+        background: var(--primary);
+        border-color: var(--primary);
+      }
+      input[type='checkbox']:checked::after {
+        transform: translateX(18px);
+        background: var(--onPrimary);
+      }
+      .ws {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 7px 0;
+        border-top: 1px solid rgba(var(--outline-rgb), 0.25);
+      }
+      .ws:first-of-type {
+        border-top: 0;
+      }
+      .ws > span {
+        width: 150px;
+        flex: none;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-weight: 500;
+      }
+      .ws button {
+        width: 30px;
+        height: 30px;
+        border-radius: 8px;
+        background: rgba(var(--surface3-rgb), 1);
+        color: var(--textDim);
+      }
+      .ws button.on {
+        background: var(--primary);
+        color: var(--onPrimary);
+      }
+      .ws button.other {
+        opacity: 0.35;
+      }
+      .note {
+        color: var(--textDim);
+        font-size: 11.5px;
+        font-weight: 500;
+        margin-top: 6px;
+      }
+      #revert {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 0 18px 10px;
+        padding: 10px 14px;
+        border-radius: 12px;
+        background: rgba(var(--primary-rgb), 0.22);
+      }
+      #revert[hidden] {
+        display: none;
+      }
+      #revert span {
+        margin-right: auto;
+      }
+      footer {
+        display: flex;
+        gap: 8px;
+        padding: 12px 18px 16px;
+        border-top: 1px solid rgba(var(--outline-rgb), 0.3);
+      }
+      footer .right {
+        margin-left: auto;
+      }
+      footer #apply {
+        background: var(--primary);
+        color: var(--onPrimary);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="panel">
+      <header>
+        <h1><i class="ic">&#xE7F4;</i> Displays</h1>
+        <span id="status">Loading…</span>
+        <button class="ic" id="close" title="Close (Esc)">&#xE711;</button>
+      </header>
+      <main>
+        <section>
+          <h2>Layout</h2>
+          <div id="map"></div>
+          <div class="tools">
+            <button data-topo="extend">Extend</button>
+            <button data-topo="clone">Duplicate</button>
+            <button data-topo="internal">First only</button>
+            <button data-topo="external">Second only</button>
+          </div>
+          <div class="note">Drag a display to move it. The topology buttons apply at once.</div>
+        </section>
+        <section id="opts"></section>
+        <section>
+          <h2>Workspaces</h2>
+          <div id="ws"></div>
+          <div class="note">A workspace bound to a display always opens there. Unbound ones open on the focused display.</div>
+        </section>
+      </main>
+      <div id="revert" hidden><span></span><button id="keep">Keep</button><button id="undo">Revert</button></div>
+      <footer>
+        <button id="native">Windows display settings</button>
+        <button id="reset" class="right">Reset</button>
+        <button id="apply">Apply</button>
+      </footer>
+    </div>
+
+    <script type="module">
+      import { send, b64, json, open, popup, esc } from './lib/mw4w.js';
+
+      const close = popup({ blur: false });
+      const $ = id => document.getElementById(id);
+      const ORIENT = ['Landscape', 'Portrait', 'Landscape (flipped)', 'Portrait (flipped)'];
+
+      let data; // cache/displays.json
+      let list = []; // editable copy: {device, name, mode, x, y, orientation, primary, scale, ...}
+      let binds = {}; // device -> [workspace names]
+      let sel = 0;
+
+      const size = d => {
+        const [w, h] = d.mode.split(/[x@]/).map(Number);
+        return d.orientation % 2 ? [h, w] : [w, h];
+      };
+
+      async function load() {
+        const at = data?.at;
+        send('displays');
+        for (let i = 0; i < 40; i++) {
+          const d = await json('cache/displays.json');
+          if (d && d.at !== at) return use(d);
+          await new Promise(r => setTimeout(r, 150));
+        }
+        $('status').textContent = 'No answer from mw4w.ps1 (cache\\error.log)';
+      }
+
+      function use(d) {
+        data = d;
+        list = (d.displays ?? []).map(x => ({ device: x.Device, name: x.Name, mode: x.Mode, x: x.X, y: x.Y, orientation: x.Orientation, primary: x.Primary, scale: x.Scale, modes: x.Modes, scales: x.Scales }));
+        binds = Object.fromEntries(Object.entries(d.workspaces ?? {}).map(([k, v]) => [k, [...v]]));
+        sel = Math.min(sel, list.length - 1);
+        $('status').textContent = `${list.length} display${list.length === 1 ? '' : 's'}`;
+        render();
+        revertBanner();
+      }
+
+      function render() {
+        // map: fit every display into the box
+        const map = $('map');
+        const r = list.map(d => [d.x, d.y, ...size(d)]);
+        const minX = Math.min(...r.map(a => a[0])), minY = Math.min(...r.map(a => a[1]));
+        const maxX = Math.max(...r.map(a => a[0] + a[2])), maxY = Math.max(...r.map(a => a[1] + a[3]));
+        const k = Math.min((map.clientWidth - 40) / (maxX - minX), (map.clientHeight - 40) / (maxY - minY));
+        const ox = (map.clientWidth - (maxX - minX) * k) / 2, oy = (map.clientHeight - (maxY - minY) * k) / 2;
+        map.dataset.k = k;
+        map.innerHTML = list
+          .map((d, i) => {
+            const [x, y, w, h] = r[i];
+            return `<div class="mon ${i === sel ? 'sel' : ''}" data-i="${i}" style="left:${ox + (x - minX) * k}px;top:${oy + (y - minY) * k}px;width:${w * k - 4}px;height:${h * k - 4}px"><b>${i + 1}</b><small>${esc(d.name)}</small><small>${w}×${h}${d.primary ? ' · main' : ''}</small></div>`;
+          })
+          .join('');
+
+        // options of the selected display
+        const d = list[sel];
+        const res = [...new Set(d.modes.map(m => m.split('@')[0]))];
+        const [cur, hz] = d.mode.split('@');
+        const rates = d.modes.filter(m => m.startsWith(cur + '@')).map(m => m.split('@')[1]);
+        const opt = (v, t, on) => `<option value="${esc(v)}" ${on ? 'selected' : ''}>${esc(t)}</option>`;
+        $('opts').innerHTML =
+          `<h2>Display ${sel + 1} · ${esc(d.name)}</h2>` +
+          `<label>Resolution<select data-k="res">${res.map(x => opt(x, x.replace('x', ' × '), x === cur)).join('')}</select></label>` +
+          `<label>Refresh rate<select data-k="hz">${rates.map(x => opt(x, `${x} Hz`, x === hz)).join('')}</select></label>` +
+          `<label>Scale<select data-k="scale">${d.scales.map(x => opt(x, `${x}%`, x === d.scale)).join('')}</select></label>` +
+          `<label>Orientation<select data-k="orientation">${ORIENT.map((t, i) => opt(i, t, i === d.orientation)).join('')}</select></label>` +
+          `<label>Main display<input type="checkbox" data-k="primary" ${d.primary ? 'checked' : ''} ${list.length < 2 ? 'disabled' : ''} /></label>`;
+
+        // workspace chips per display
+        const owner = n => Object.keys(binds).find(dev => binds[dev].includes(n));
+        $('ws').innerHTML = list
+          .map(
+            (d, i) =>
+              `<div class="ws"><span>${i + 1} · ${esc(d.name)}</span>` +
+              Array.from({ length: 10 }, (_, j) => {
+                const n = String(j + 1), o = owner(n);
+                return `<button data-dev="${esc(d.device)}" data-n="${n}" class="${o === d.device ? 'on' : o ? 'other' : ''}">${n}</button>`;
+              }).join('') +
+              `</div>`,
+          )
+          .join('');
+      }
+
+      // dropped display: snap it against the nearest edge of another one, aligned when close
+      function snap(d) {
+        const [w, h] = size(d);
+        let best, bd = Infinity;
+        for (const o of list) {
+          if (o === d) continue;
+          const [ow, oh] = size(o);
+          const cy = Math.min(Math.max(d.y, o.y - h + 1), o.y + oh - 1);
+          const cx = Math.min(Math.max(d.x, o.x - w + 1), o.x + ow - 1);
+          for (let [x, y] of [[o.x + ow, cy], [o.x - w, cy], [cx, o.y + oh], [cx, o.y - h]]) {
+            if (x === cx) x = Math.abs(x - o.x) < ow * 0.08 ? o.x : x;
+            else y = Math.abs(y - o.y) < oh * 0.08 ? o.y : y;
+            const dist = Math.hypot(x - d.x, y - d.y);
+            if (dist < bd) (bd = dist), (best = [x, y]);
+          }
+        }
+        if (best) [d.x, d.y] = best.map(Math.round);
+      }
+
+      $('map').addEventListener('pointerdown', e => {
+        const el = e.target.closest('.mon');
+        if (!el) return;
+        const i = +el.dataset.i, d = list[i], k = +$('map').dataset.k;
+        if (sel !== i) (sel = i), render();
+        const node = $('map').querySelector(`[data-i="${i}"]`);
+        const sx = e.clientX, sy = e.clientY, x0 = d.x, y0 = d.y, l0 = node.offsetLeft, t0 = node.offsetTop;
+        node.classList.add('drag');
+        node.setPointerCapture(e.pointerId);
+        node.onpointermove = m => {
+          node.style.left = l0 + m.clientX - sx + 'px';
+          node.style.top = t0 + m.clientY - sy + 'px';
+        };
+        node.onpointerup = m => {
+          node.onpointermove = node.onpointerup = null;
+          if (Math.hypot(m.clientX - sx, m.clientY - sy) > 3 && list.length > 1) {
+            d.x = x0 + (m.clientX - sx) / k;
+            d.y = y0 + (m.clientY - sy) / k;
+            snap(d);
+          }
+          render();
+        };
+      });
+
+      $('opts').addEventListener('change', e => {
+        const d = list[sel], k = e.target.dataset.k, v = e.target.value;
+        if (k === 'res') d.mode = d.modes.find(m => m.startsWith(v + '@')); // its highest rate
+        else if (k === 'hz') d.mode = d.mode.split('@')[0] + '@' + v;
+        else if (k === 'scale') d.scale = +v;
+        else if (k === 'orientation') d.orientation = +v;
+        else if (k === 'primary' && e.target.checked) list.forEach(o => (o.primary = o === d)); // unchecking: pick another one instead
+        // a new size can leave a gap or an overlap: snap the others back against it
+        if (k === 'res' || k === 'orientation') list.forEach(o => o !== d && snap(o));
+        render();
+      });
+
+      $('ws').addEventListener('click', e => {
+        const b = e.target.closest('button');
+        if (!b) return;
+        const { dev, n } = b.dataset;
+        const was = binds[dev]?.includes(n);
+        for (const k in binds) binds[k] = binds[k].filter(x => x !== n);
+        if (!was) (binds[dev] ??= []).push(n);
+        for (const k in binds) if (!binds[k].length) delete binds[k];
+        render();
+      });
+
+      const plan = () => list.map(({ device, mode, x, y, orientation, primary, scale }) => ({ device, mode, x, y, orientation, primary, scale }));
+      $('apply').onclick = () => {
+        const before = JSON.stringify(data.displays.map(x => ({ device: x.Device, mode: x.Mode, x: x.X, y: x.Y, orientation: x.Orientation, primary: x.Primary, scale: x.Scale })));
+        const p = { workspaces: binds };
+        if (JSON.stringify(plan()) !== before) p.displays = plan();
+        $('status').textContent = 'Applying…';
+        send('display-set', b64(JSON.stringify(p)));
+        setTimeout(load, 400);
+      };
+      $('reset').onclick = () => use(data);
+      $('keep').onclick = () => (send('display-keep'), setTimeout(load, 300));
+      $('undo').onclick = () => (send('display-undo'), ($('status').textContent = 'Reverting…'), setTimeout(load, 1500));
+      document.querySelector('.tools').onclick = e => {
+        const t = e.target.dataset.topo;
+        if (!t) return;
+        $('status').textContent = 'Switching…';
+        send('display-topology', t);
+        setTimeout(load, 3500);
+      };
+      $('native').onclick = () => open('ms-settings:display');
+      $('close').onclick = close;
+
+      // "Keep these settings?" while a change waits for its 15s revert
+      let tick;
+      function revertBanner() {
+        clearInterval(tick);
+        const show = () => {
+          const s = Math.ceil((data?.revertAt - Date.now()) / 1000);
+          $('revert').hidden = !(s > 0);
+          $('revert').firstChild.textContent = `Keep these display settings? Reverting in ${s} s`;
+          if (!(s > 0)) clearInterval(tick), s > -20 && setTimeout(load, 1500); // the revert's new state
+        };
+        if (data?.revertAt) (tick = setInterval(show, 250)), show();
+        else $('revert').hidden = true;
+      }
+
+      document.addEventListener('visibilitychange', () => !document.hidden && load());
+      addEventListener('resize', () => list.length && render());
+      load();
+    </script>
+  </body>
+</html>
