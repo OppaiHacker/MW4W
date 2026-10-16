@@ -96,6 +96,8 @@ svg.i {
 #app {
   display: grid;
   grid-template-columns: var(--side) 1fr auto;
+  /* one row, the window's height: a long preview scrolls inside #pv instead of stretching the row */
+  grid-template-rows: minmax(0, 1fr);
   height: 100%;
 }
 
@@ -162,6 +164,8 @@ svg.i {
 
 .pl {
   display: flex;
+  width: 100%; /* a button: it would shrink to its label and centre it */
+  text-align: left;
   align-items: center;
   gap: 12px;
   height: 38px;
@@ -981,6 +985,15 @@ pre.txt,
 pre.hex {
   padding: 10px 14px;
 }
+/* in the side pane, long text scrolls in its own box so the file info below stays in view */
+#pv > .chroma,
+#pv > pre,
+#pv > .md,
+#pv > .md-src,
+#pv > .tbwrap {
+  max-height: 60vh;
+  overflow: auto;
+}
 pre.txt {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -1419,16 +1432,40 @@ table.tb td.n {
   #side {
     display: none;
   }
+  /* without the sidebar the list is the first grid item: give it the 1fr */
+  #app {
+    grid-template-columns: 1fr auto;
+  }
+  #pane {
+    width: min(var(--pane), 50vw);
+  }
+}
+
+/* columns follow the list's own width (the preview pane takes some of the window) */
+#main {
+  container-type: inline-size;
+}
+@container (max-width: 560px) {
   .row {
     grid-template-columns: calc(32px * var(--zoom)) 1fr 90px 44px;
   }
-  .row .dt {
+  .row .dt,
+  #cols .c-dt {
     display: none;
   }
   #cols {
     grid-template-columns: 1fr 90px 44px;
   }
-  #cols .c-dt {
+}
+@container (max-width: 380px) {
+  .row {
+    grid-template-columns: calc(32px * var(--zoom)) 1fr 44px;
+  }
+  .row .sz,
+  #cols .c-sz {
     display: none;
+  }
+  #cols {
+    grid-template-columns: 1fr 44px;
   }
 }

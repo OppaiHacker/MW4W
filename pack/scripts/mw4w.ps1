@@ -270,7 +270,7 @@ window_behavior:
   state_defaults:
     floating:
       centered: true
-      shown_on_top: false
+      shown_on_top: true
     fullscreen:
       maximized: false
       shown_on_top: false

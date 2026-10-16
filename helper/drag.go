@@ -474,6 +474,7 @@ func (s *split) move(d int32, f func(w edgeWin, r rect)) {
 // far longer to repaint than a mouse move, so resizing them live lags.
 type ghost struct {
 	ov     rect
+	desk   []thumb // under the windows
 	thumbs []thumb
 	of     map[uintptr]int // window -> its thumb
 }
@@ -484,6 +485,7 @@ func newGhost(splits []*split) *ghost {
 		return nil
 	}
 	g := &ghost{ov: overlayRect(), of: map[uintptr]int{}}
+	g.desk = desktop(g.ov)
 	g.thumbs = thumbs(g.ov)
 	for i, t := range g.thumbs {
 		g.of[t.h] = i
@@ -531,6 +533,7 @@ func (g *ghost) done() {
 }
 
 func (g *ghost) close() {
+	unregister(g.desk)
 	unregister(g.thumbs)
 	overlayMu.Unlock()
 }

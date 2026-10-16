@@ -30,10 +30,10 @@ foreach ($f in "$Glzr\glazewm\config.yaml", "$Glzr\zebar\settings.json") {
 
 Step "Installing widget pack -> $Pack"
 New-Item -ItemType Directory -Force $Pack | Out-Null
-# a running exe can't be replaced
-Get-Process mw4w-files -ErrorAction SilentlyContinue | Stop-Process -Force
-# settings.json (user) and cache/ survive reinstalls.
-robocopy (Join-Path $Repo 'pack') $Pack /E /NFL /NDL /NJH /NJS /NP /XF settings.json /XD cache | Out-Null
+# a running exe can't be replaced (winmask and its serve worker come back with "mw4w.ps1 startup" below)
+Get-Process mw4w-files, winmask -ErrorAction SilentlyContinue | Stop-Process -Force
+# settings.json (user) and cache/ survive reinstalls. /R /W: a locked file fails fast instead of 1M retries.
+robocopy (Join-Path $Repo 'pack') $Pack /E /R:3 /W:1 /NFL /NDL /NJH /NJS /NP /XF settings.json /XD cache | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy failed ($LASTEXITCODE)" }
 
 $settingsPath = Join-Path $Pack 'settings.json'
@@ -109,12 +109,16 @@ if ($ReplaceExplorer) {
 
 Step 'Autostart (GlazeWM starts Zebar + helpers)'
 Set-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' 'MW4W-GlazeWM' "`"$GlazeExe`""
+# upgrade from the ML4W name: it started GlazeWM a second time
+Remove-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' 'ML4W-GlazeWM' -ErrorAction SilentlyContinue
 
 if (-not $NoStart) {
   Step 'Starting'
   if (Get-Process glazewm -ErrorAction SilentlyContinue) {
     & powershell -NoProfile -ExecutionPolicy Bypass -File $mw4w bar-restart
     & (Join-Path $env:ProgramFiles 'glzr.io\GlazeWM\cli\glazewm.exe') command wm-reload-config | Out-Null
+    # what GlazeWM's startup_commands would run: the new winmask (it kills the old one), MW4W Files, media loop
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $mw4w startup
   } else {
     Get-Process zebar -ErrorAction SilentlyContinue | Stop-Process -Force
     Start-Process $GlazeExe

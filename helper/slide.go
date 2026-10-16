@@ -10,6 +10,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -69,6 +70,7 @@ var (
 	wsKeys   = map[combo]int{}
 	wsCmds   [][]string // commands per taken-over keybind
 	wsHeld   uint32     // vk of the held taken-over key: auto-repeat is swallowed
+	clicked  []string   // commands of the last "slide" message (slider thread only)
 	listed   []uintptr  // enumWindows output
 	ipc      *glaze     // slider thread only: one GlazeWM connection for all slides
 	listCB   = syscall.NewCallback(listWindow)
@@ -223,9 +225,19 @@ func slideProc(h, msg, wp, lp uintptr) uintptr {
 			mw4wArgs(strings.SplitN(line, " ", 2)...).Start()
 		}
 		return 0
+	case wmApp + 2:
+		slide(clicked)
+		return 0
 	case 0x004A: // WM_COPYDATA from "winmask --mw4w"
 		cd := (*copyData)(unsafe.Pointer(lp))
-		return toWorker(syscall.UTF16ToString(unsafe.Slice(cd.ptr, cd.size/2)))
+		line := syscall.UTF16ToString(unsafe.Slice(cd.ptr, cd.size/2))
+		// "slide <base64 of GlazeWM commands, one a line>": a dock/launcher click, slid like the keybinds
+		if b, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(line, "slide ")); strings.HasPrefix(line, "slide ") && err == nil {
+			clicked = strings.Split(string(b), "\n")
+			postMessage.Call(h, wmApp+2, 0, 0) // posted: the sender needn't wait out the slide
+			return 1
+		}
+		return toWorker(line)
 	}
 	r, _, _ := defWindowProc.Call(h, msg, wp, lp)
 	return r
@@ -310,6 +322,8 @@ func slide(cmds []string) {
 	defer overlayMu.Unlock()
 	ov := overlayRect()
 	w := ov.r - ov.l
+	desk := desktop(ov) // registered first: under every window
+	defer unregister(desk)
 	old := thumbs(ov)
 	defer unregister(old)
 	place(old, 0)
@@ -432,6 +446,25 @@ func thumbs(ov rect) []thumb {
 	return out
 }
 
+// desktop is a still thumbnail of the desktop window (wallpaper and icons), cropped to ov;
+// none when the shell has no desktop (the overlay's painted wallpaper shows then).
+func desktop(ov rect) []thumb {
+	cls, _ := syscall.UTF16PtrFromString("Progman")
+	h, _, _ := findWindow.Call(uintptr(unsafe.Pointer(cls)), 0)
+	var id uintptr
+	if h == 0 || !visible(h) {
+		return nil
+	}
+	if hr, _, _ := dwmRegister.Call(slideWin, h, uintptr(unsafe.Pointer(&id))); hr != 0 {
+		return nil
+	}
+	var r rect
+	windowRect.Call(h, uintptr(unsafe.Pointer(&r)))
+	p := thumbProps{flags: 0x1 | 0x2 | 0x4 | 0x8, dest: rect{0, 0, ov.r - ov.l, ov.b - ov.t}, src: rect{ov.l - r.l, ov.t - r.t, ov.r - r.l, ov.b - r.t}, opacity: 255, visible: 1} // RECTDESTINATION|RECTSOURCE|OPACITY|VISIBLE
+	dwmUpdate.Call(id, uintptr(unsafe.Pointer(&p)))
+	return []thumb{{id, h, r}}
+}
+
 // place shows the thumbnails shifted by dx.
 func place(ts []thumb, dx int32) {
 	for _, t := range ts {
@@ -485,21 +518,30 @@ func background(ov rect, scr uintptr) uintptr {
 	return bgCache.dc
 }
 
-// overlayRect is the focused monitor below the bar.
+// overlayRect is the focused monitor between the bar and the dock, so both stay put.
 // ponytail: a workspace shown on another monitor gets no slide there.
 func overlayRect() rect {
 	fg, _, _ := getFg.Call()
 	m, _, _ := monitorOf.Call(fg, 2)
 	ov, _ := monitorRects(m)
-	t, _ := syscall.UTF16PtrFromString("Zebar - mw4w / bar")
-	if bar, _, _ := findWindow.Call(0, uintptr(unsafe.Pointer(t))); bar != 0 && visible(bar) {
-		var r rect
-		windowRect.Call(bar, uintptr(unsafe.Pointer(&r)))
-		if r.b > ov.t && r.t <= ov.t && r.b < ov.b {
-			ov.t = r.b
-		}
+	if r, ok := zebarRect("bar"); ok && r.b > ov.t && r.t <= ov.t && r.b < ov.b {
+		ov.t = r.b
+	}
+	if r, ok := zebarRect("dock"); ok && r.t < ov.b && r.b >= ov.b && r.t > ov.t {
+		ov.b = r.t
 	}
 	return ov
+}
+
+// ponytail: FindWindow takes the first match, so with the bar on several monitors only one is checked
+func zebarRect(widget string) (r rect, ok bool) {
+	t, _ := syscall.UTF16PtrFromString("Zebar - mw4w / " + widget)
+	h, _, _ := findWindow.Call(0, uintptr(unsafe.Pointer(t)))
+	if h == 0 || !visible(h) {
+		return r, false
+	}
+	windowRect.Call(h, uintptr(unsafe.Pointer(&r)))
+	return r, true
 }
 
 func visible(h uintptr) bool {

@@ -118,7 +118,7 @@
     </div>
 
     <script type="module">
-      import { zebar, mw4w, b64, json, popup, score, esc } from './lib/mw4w.js';
+      import { zebar, mw4w, send, b64, json, popup, score, esc } from './lib/mw4w.js';
 
       // fresh for the next show: empty search, apps mode, current app cache
       const close = popup({
@@ -200,7 +200,10 @@
           bump(it.id);
           zebar.shellExec('explorer', [`shell:AppsFolder\\${it.id}`]);
         } else if (it.kind === 'win') {
-          glaze.output?.runCommand(`focus --container-id ${it.id}`);
+          // `focus --container-id` doesn't redraw workspaces: a hidden one is switched to first, sliding (winmask)
+          const ws = glaze.output?.allWorkspaces.find(w => JSON.stringify(w).includes(it.id));
+          if (ws && !ws.isDisplayed) send('slide', b64(`focus --workspace ${ws.name}\nfocus --container-id ${it.id}`));
+          else glaze.output?.runCommand(`focus --container-id ${it.id}`);
         } else if (glaze.output) {
           glaze.output.runCommand(`shell-exec ${it.name}`); // instant, like Win+R
         } else {

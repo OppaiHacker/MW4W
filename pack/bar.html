@@ -107,47 +107,54 @@
         background: rgba(var(--primary-rgb), 0.25);
         color: var(--text);
       }
-      /* MediaControll capsule */
+      /* MediaControll capsule (StatusbarApp/MediaModule.qml): BlurArt + GlassPanel + MiniRow */
       .cap {
         position: relative;
         display: flex;
         align-items: center;
-        gap: 9px;
+        gap: 8px;
         height: 30px;
         min-width: 0;
-        max-width: 300px;
-        padding: 0 12px 0 4px;
+        padding: 0 10px;
         border-radius: 15px;
         overflow: hidden;
         isolation: isolate;
         color: #fff;
         cursor: pointer;
-        border: 1px solid rgba(255, 255, 255, 0.16);
-        background: rgba(255, 255, 255, 0.07);
-        box-shadow:
-          inset 1px 1px 0 rgba(255, 255, 255, 0.22),
-          inset 0 0 12px rgba(255, 255, 255, 0.05);
-        transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+        /* BlurArt base: primary_container -> surface */
+        background: linear-gradient(color-mix(in srgb, var(--primary) 30%, var(--surface)), var(--surface));
       }
       .cap[hidden] {
         display: none;
       }
-      .cap:hover {
-        transform: scale(1.03);
-      }
-      /* the blurred cover tints the capsule, like the island */
+      /* the blurred cover, oversized so the soft edges fall outside */
       .cap .tint {
         position: absolute;
-        inset: -20px;
+        inset: -20%;
         z-index: -1;
         background-size: cover;
         background-position: center;
-        filter: blur(14px) saturate(1.4) brightness(0.55);
+        filter: blur(12px) saturate(1.9);
         opacity: 0;
-        transition: opacity 0.4s;
+        transition: opacity 0.3s;
       }
       .cap.art .tint {
         opacity: 1;
+      }
+      /* GlassPanel (tintAlpha 0): rim, specular top line, accent glow line, sheen; over BlurArt's dimming */
+      .cap::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        z-index: -1;
+        border-radius: inherit;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        pointer-events: none;
+        background:
+          linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.7) 30% 70%, transparent) top center / calc(100% - 30px) 1px no-repeat,
+          linear-gradient(90deg, transparent, rgba(var(--primary-rgb), 0.8), transparent) bottom center / calc(100% - 30px) 1px no-repeat,
+          linear-gradient(rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.03) 45%, rgba(var(--primary-rgb), 0.1)),
+          linear-gradient(rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.4));
       }
       .cover {
         width: 22px;
@@ -157,7 +164,7 @@
         overflow: hidden;
         display: grid;
         place-items: center;
-        background: rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.08);
       }
       .cover img {
         width: 100%;
@@ -166,44 +173,50 @@
       }
       .ttl {
         min-width: 0;
+        max-width: 200px;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
         font-size: 13px;
+        font-weight: 400;
       }
-      /* equalizer: dancing bars while playing, three dots when paused */
+      /* Equalizer: three bars bouncing from the bottom, frozen and dimmed while paused */
       .eq {
         display: flex;
-        align-items: center;
-        gap: 3px;
+        align-items: flex-end;
+        gap: 2px;
         height: 12px;
         flex: none;
-        opacity: 0.85;
+        opacity: 0.4;
+        transition: opacity 0.3s;
+      }
+      .playing .eq {
+        opacity: 1;
       }
       .eq i {
         width: 3px;
-        height: 3px;
+        height: 3.6px;
         border-radius: 1.5px;
         background: currentColor;
         transition: height 0.3s;
       }
       .playing .eq i {
-        animation: eq 0.6s ease-in-out infinite alternate;
+        animation: eq 260ms ease-in-out infinite alternate;
+        --h: 6.6px;
       }
       .playing .eq i:nth-child(2) {
-        animation-duration: 0.47s;
-        animation-delay: -0.2s;
+        animation-duration: 330ms;
+        animation-delay: 90ms;
+        --h: 10.8px;
       }
       .playing .eq i:nth-child(3) {
-        animation-duration: 0.71s;
-        animation-delay: -0.4s;
+        animation-duration: 400ms;
+        animation-delay: 180ms;
+        --h: 8.4px;
       }
       @keyframes eq {
-        from {
-          height: 3px;
-        }
         to {
-          height: 12px;
+          height: var(--h);
         }
       }
       .wtitle {

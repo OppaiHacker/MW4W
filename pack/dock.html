@@ -49,21 +49,7 @@
         display: grid;
         place-items: center;
       }
-      /* hover: primary circle behind the icon, icon grows 12% */
-      button::before {
-        content: '';
-        position: absolute;
-        width: 48px;
-        height: 48px;
-        top: 0;
-        border-radius: 14px;
-        background: var(--primary);
-        opacity: 0;
-        transition: opacity 300ms var(--ease);
-      }
-      button:hover::before {
-        opacity: 0.18;
-      }
+      /* hover: only the icon grows 12% */
       button > :first-child {
         position: relative;
         transition: transform 300ms var(--ease);
@@ -111,13 +97,23 @@
       <div id="apps" style="display: contents"></div>
     </div>
     <script type="module">
-      import { zebar, widget, send, settings, watchState, esc } from './lib/mw4w.js';
+      import { zebar, widget, send, b64, settings, watchState, esc } from './lib/mw4w.js';
       import { liquidGlass, wallpaperPlace } from './lib/glass.js';
 
       if (!(await settings()).dock) widget.close();
 
       const providers = zebar.createProviderGroup({ glazewm: { type: 'glazewm' } });
       const glaze = (cmd, id) => providers.outputMap.glazewm?.runCommand(cmd, id);
+      // window id -> its workspace, filled by render()
+      let wsOf = new Map();
+      const wsNum = w => parseInt(wsOf.get(w.id)?.name) || 99;
+      // GlazeWM's `focus --container-id` doesn't redraw workspaces: a hidden one is
+      // switched to first, through winmask so it slides like the keybinds
+      const focusWin = id => {
+        const ws = wsOf.get(id);
+        if (ws && !ws.isDisplayed) return send('slide', b64(`focus --workspace ${ws.name}\nfocus --container-id ${id}`));
+        glaze(`focus --container-id ${id}`);
+      };
       const dock = document.getElementById('dock');
       const apps = document.getElementById('apps');
       liquidGlass(dock, { place: wallpaperPlace('bottom'), radius: 22, bezel: 14, strength: 11, tint: 'rgba(var(--surface-rgb), 0.38)' }).setSource(
@@ -131,14 +127,22 @@
       });
 
       // Icons: cache/icons/proc-<name>.png (64px), made on demand by `mw4w.ps1 winicons`.
+      // A missing icon shows the letter, asks for it once and swaps it in as soon as the png exists.
       let iconVer = 0;
-      let iconAsked = 0;
+      const probing = new Set();
+      const noIcons = new Set();
       window.noIcon = img => {
+        const src = img.src.split('?')[0];
         img.outerHTML = `<div class="av">${esc(img.alt[0]?.toUpperCase() ?? '?')}</div>`;
-        if (Date.now() - iconAsked < 20000) return; // ponytail: one refresh per 20s, enough for new apps
-        iconAsked = Date.now();
+        if (probing.has(src) || noIcons.has(src)) return;
+        probing.add(src);
         send('winicons');
-        setTimeout(() => (iconVer++, render()), 5000);
+        let n = 0;
+        const p = new Image();
+        p.onload = () => (probing.delete(src), iconVer++, render());
+        // ponytail: poll 300ms x 20, then the letter stays (elevated apps hide their exe path)
+        p.onerror = () => (++n < 20 ? setTimeout(() => (p.src = `${src}?t=${Date.now()}`), 300) : (probing.delete(src), noIcons.add(src)));
+        p.src = `${src}?t=${Date.now()}`;
       };
 
       // One button per app (process), like mw4w-dock groups windows by app.
@@ -148,12 +152,17 @@
         const g = providers.outputMap.glazewm;
         if (!g) return;
         groups = new Map();
+        wsOf = new Map();
+        const walk = (c, ws) => (c.type === 'window' ? wsOf.set(c.id, ws) : c.children?.forEach(x => walk(x, ws)));
+        for (const ws of g.allWorkspaces ?? []) walk(ws, ws);
         for (const w of g.allWindows ?? []) {
           const k = w.processName.toLowerCase();
           if (!groups.has(k)) groups.set(k, []);
           groups.get(k).push(w);
         }
+        // in workspace order: an app sits at its lowest workspace
         const next = [...groups]
+          .sort((a, b) => Math.min(...a[1].map(wsNum)) - Math.min(...b[1].map(wsNum)))
           .map(([k, ws]) => {
             const title = ws.length > 1 ? `${ws[0].processName} (${ws.length})` : ws[0].title;
             return (
@@ -175,7 +184,7 @@
         if (!ws) return;
         // click cycles through the app's windows
         const i = ws.findIndex(w => w.hasFocus);
-        glaze(`focus --container-id ${ws[(i + 1) % ws.length].id}`);
+        focusWin(ws[(i + 1) % ws.length].id);
       });
 
       // middle click closes the app's focused (or first) window

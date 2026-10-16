@@ -79,7 +79,7 @@ const (
 	swShowNormal  = 1
 	swMaximize    = 3
 	swRestore     = 9
-	wsOverlapped  = 0x00CF0000 // WS_OVERLAPPEDWINDOW
+	wsOverlapped  = 0x00C70000 // WS_OVERLAPPEDWINDOW without WS_SYSMENU: DWM would draw its caption buttons under the page's
 	wsExAppWindow = 0x00040000
 	cwUseDefault  = 0x80000000
 	smCxFrame     = 32
@@ -264,6 +264,7 @@ func ensureWarm() {
 func showWin(w *win) {
 	procShowWindow.Call(w.hwnd, swShowNormal)
 	procSetForegroundWindow.Call(w.hwnd)
+	w.wv.Show() // a WebView2 made in a hidden window (the warm spare) stays hidden until told
 	w.wv.Resize()
 	w.wv.Focus()
 }
