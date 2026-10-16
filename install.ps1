@@ -108,7 +108,7 @@ if ($ReplaceExplorer) {
 }
 
 Step 'Autostart (GlazeWM starts Zebar + helpers)'
-Set-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' 'MW4W-GlazeWM' "`"$GlazeExe`""
+& powershell -NoProfile -ExecutionPolicy Bypass -File $mw4w autostart  # a logon task: the Run key comes ~100 s late
 # upgrade from the ML4W name: it started GlazeWM a second time
 Remove-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' 'ML4W-GlazeWM' -ErrorAction SilentlyContinue
 

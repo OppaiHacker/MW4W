@@ -161,7 +161,7 @@ The installer:
 4. detects the default browser and terminal (Alacritty > wt > powershell); Alacritty gets an ML4W-style config (`%APPDATA%\alacritty`) with colors from the wallpaper,
 5. makes Firefox/Zen open external links in the existing window (see Limitations),
 6. sets the MW4W wallpaper, generates colors and the GlazeWM config,
-7. adds GlazeWM to autostart. GlazeWM then starts Zebar (bar, dock and hidden popups), `winmask` and `mw4w.ps1 startup`.
+7. adds GlazeWM to autostart (a logon task: Explorer runs Run-key entries one by one after an idle wait, ~100 s late on a busy sign-in). GlazeWM then starts Zebar (bar, dock and hidden popups), `winmask` and `mw4w.ps1 startup`.
 
 Flags: `-NoStart` (don't start anything), `-KeepWallpaper` (keep the current wallpaper).
 Uninstall: `uninstall.ps1` (restores the config backups and shows the taskbar again).
@@ -193,7 +193,9 @@ Optional: `winget install Alacritty.Alacritty DEVCOM.JetBrainsMonoNerdFont` befo
 | SUPER + CTRL + B / SHIFT + B | show/hide bar / reload bar          |
 | SUPER + SHIFT + R            | reload config                       |
 
-Win+L, Win+V (clipboard), Win+. (emoji), Win+Shift+S (screenshot) and Win+Space (keyboard layout) stay with Windows.
+Win+L, Win+V (clipboard), Win+. (emoji), Win+N (notifications), Win+Shift+S (screenshot) and Win+Space (keyboard layout) stay with Windows.
+Every other SUPER shortcut of Windows (Win+A, Win+W, Win+R, Win+X, Win+I, ...) is blocked by `winmask`, so nothing breaks the illusion;
+to keep one, add it to `keybinds.json` as a `"native": true` row and press SUPER+SHIFT+R.
 
 ## Files
 

@@ -5,7 +5,7 @@
 #   power <lock|logout|sleep|hibernate|reboot|shutdown>
 #   kill-active | empty-workspace | gamemode | bar-restart | bar-toggle
 #   set <base64-json> | toggle <setting> | run <base64-cmd> | launch <appid> | winicons
-#   media-loop | media-seek <seconds> | media-volume <0-100> | updates | shell <on|off>
+#   media-loop | media-seek <seconds> | media-volume <0-100> | updates | shell <on|off> | autostart
 #   quick | app-audio <b64> | audio-default <b64 id> | power-mode <0-2> | brightness <0-100> | radio <wifi|bluetooth> <on|off>
 #   wifi-scan | wifi-connect <b64 {ssid, pass}> | wifi-disconnect
 #   displays | display-set <b64 {displays, workspaces}> | display-keep | display-undo | display-topology <extend|clone|internal|external>
@@ -785,6 +785,24 @@ function Sync-Shell([bool]$on) {
   $exe = Join-Path $Pack 'bin\mw4w-shell.exe'
   if ($on -and (Test-Path $exe)) { Set-ItemProperty $WinlogonKey Shell $exe }
   elseif ((Get-ItemProperty $WinlogonKey -ErrorAction SilentlyContinue).Shell -like '*mw4w-shell*') { Remove-ItemProperty $WinlogonKey Shell }
+  Sync-Autostart
+}
+
+# GlazeWM at sign-in: a logon task, not the Run key. Explorer runs Run entries one after another,
+# only after RunOnce and an idle wait: GlazeWM came ~100 s after the desktop. GlazeWM is uiAccess,
+# which a task can't CreateProcess (error 740), so rundll32 ShellExecutes it. As the shell,
+# mw4w-shell starts GlazeWM itself: the task is off then.
+function Sync-Autostart {
+  $run = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+  $exe = Join-Path $env:ProgramFiles 'glzr.io\GlazeWM\glazewm.exe'
+  $asShell = (Get-ItemProperty $WinlogonKey -ErrorAction SilentlyContinue).Shell -like '*mw4w-shell*'
+  try {
+    $set = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit 0 -Priority 4 -Disable:$asShell
+    Register-ScheduledTask 'MW4W-GlazeWM' -Force -Settings $set `
+      -Action (New-ScheduledTaskAction -Execute 'rundll32.exe' -Argument "shell32.dll,ShellExec_RunDLL `"$exe`"") `
+      -Trigger (New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME") | Out-Null
+    Remove-ItemProperty $run 'MW4W-GlazeWM' -ErrorAction SilentlyContinue
+  } catch { Set-ItemProperty $run 'MW4W-GlazeWM' "`"$exe`"" }  # no Task Scheduler: the slow way
 }
 
 # MW4W Files opens folders everywhere (double-click on a folder, "Open folder" in apps, shortcuts):
@@ -928,6 +946,7 @@ function Invoke-Mw4w([string]$Cmd, [string]$Arg) {
     'apply' { Sync-Taskbar; Apply }  # Sync-Taskbar restarts winmask: it reads keybinds.json too
     'colors' { Update-Colors | Out-Null; Apply }
     'startup' { Startup }
+    'autostart' { Sync-Autostart }
     'cache' { Update-Apps }
     'thumbs' { Update-Thumbs }
     'wallpaper' { Set-Wallpaper $Arg }

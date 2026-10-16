@@ -80,3 +80,21 @@ func TestSplitTouching(t *testing.T) {
 		t.Fatal("nested split along the axis must stay live")
 	}
 }
+
+func TestParseKey(t *testing.T) {
+	for k, want := range map[string]combo{
+		"lwin+a":              {vk: 'A'},
+		"lwin+shift+0":        {vk: '0', shift: true},
+		"lwin+control+enter":  {vk: 0x0D, ctrl: true},
+		"lwin+alt+oem_period": {vk: 0xBE, alt: true},
+		"lwin+f12":            {vk: 0x7B},
+		"lwin+lmb":            {},
+	} {
+		if c, win := parseKey(k); c != want || !win {
+			t.Errorf("%s: got %+v %v, want %+v", k, c, win, want)
+		}
+	}
+	if _, win := parseKey("alt+a"); win {
+		t.Error("alt+a is no SUPER combo")
+	}
+}

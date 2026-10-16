@@ -89,6 +89,7 @@ var (
 	redrawWake   = make(chan struct{}, 1)
 	curThread    = syscall.NewLazyDLL("kernel32.dll").NewProc("GetCurrentThreadId")
 	winDown      bool
+	blocked      [256]bool // keydowns blockedKey ate: their keyups go too
 	hideTaskbar  bool
 )
 
@@ -145,6 +146,12 @@ func hook(code int, wparam uintptr, lparam uintptr) uintptr {
 			return 1 // ALT+Tab does nothing, like on Hyprland
 		case !isWin && (down || up) && workspaceKey(k.vkCode, down):
 			return 1 // slide.go switches the workspace
+		case !isWin && down && blockedKey(k.vkCode):
+			blocked[k.vkCode&0xFF] = true
+			return 1
+		case !isWin && up && blocked[k.vkCode&0xFF]:
+			blocked[k.vkCode&0xFF] = false
+			return 1 // its keydown was blocked
 		}
 	}
 	r, _, _ := callNext.Call(0, uintptr(code), wparam, lparam)

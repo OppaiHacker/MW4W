@@ -484,7 +484,7 @@ func newGhost(splits []*split) *ghost {
 	if !overlayMu.TryLock() {
 		return nil
 	}
-	g := &ghost{ov: overlayRect(), of: map[uintptr]int{}}
+	g := &ghost{ov: overlayRect(fgMonitor()), of: map[uintptr]int{}}
 	g.desk = desktop(g.ov)
 	g.thumbs = thumbs(g.ov)
 	for i, t := range g.thumbs {

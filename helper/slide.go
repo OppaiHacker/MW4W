@@ -105,45 +105,81 @@ func takeOver(cmd []string) bool {
 		len(cmd) == 1 && (strings.HasPrefix(j, "@widget ") || strings.HasPrefix(j, "@mw4w ") || strings.HasPrefix(j, "shell-exec "))
 }
 
-// loadWorkspaceKeys takes every SUPER keybind takeOver wants.
+// keyNames: GlazeWM key names whose virtual-key code isn't the letter or digit itself.
+var keyNames = map[string]uint32{"tab": 0x09, "enter": 0x0D, "escape": 0x1B, "space": 0x20, "print_screen": 0x2C,
+	"left": 0x25, "up": 0x26, "right": 0x27, "down": 0x28, "delete": 0x2E, "insert": 0x2D, "home": 0x24, "end": 0x23,
+	"page_up": 0x21, "page_down": 0x22, "backspace": 0x08, "oem_tilde": 0xC0, "oem_period": 0xBE, "oem_comma": 0xBC,
+	"oem_minus": 0xBD, "oem_plus": 0xBB, "oem_1": 0xBA, "oem_2": 0xBF, "oem_4": 0xDB, "oem_5": 0xDC, "oem_6": 0xDD, "oem_7": 0xDE}
+
+// parseKey reads "lwin+shift+a". vk 0: a key name we don't know.
+func parseKey(k string) (c combo, win bool) {
+	parts := strings.Split(strings.ToLower(k), "+")
+	for _, p := range parts[:len(parts)-1] {
+		switch p {
+		case "lwin", "rwin":
+			win = true
+		case "shift":
+			c.shift = true
+		case "control", "ctrl":
+			c.ctrl = true
+		case "alt":
+			c.alt = true
+		}
+	}
+	last := parts[len(parts)-1]
+	c.vk = keyNames[last]
+	if len(last) == 1 && (last[0] >= '0' && last[0] <= '9' || last[0] >= 'a' && last[0] <= 'z') {
+		c.vk = uint32(strings.ToUpper(last)[0])
+	} else if n, err := strconv.Atoi(strings.TrimPrefix(last, "f")); err == nil && last[0] == 'f' && n >= 1 && n <= 24 {
+		c.vk = 0x6F + uint32(n) // F1 = 0x70
+	}
+	return
+}
+
+// loadWorkspaceKeys takes every SUPER keybind takeOver wants, and notes every
+// bound SUPER combo for blockedKey.
 func loadWorkspaceKeys() {
 	var kb []struct {
 		Keys []string
 		Cmd  []string
 	}
 	readJSON("keybinds.json", &kb)
-	named := map[string]uint32{"tab": 0x09, "enter": 0x0D, "left": 0x25, "up": 0x26, "right": 0x27, "down": 0x28, "oem_tilde": 0xC0}
+	winKeys[combo{vk: 'R'}] = true // GlazeWM's resize mode (mw4w.ps1 Get-GlazeYaml)
 	for _, b := range kb {
-		if !takeOver(b.Cmd) {
-			continue
-		}
 		for _, k := range b.Keys {
-			parts := strings.Split(strings.ToLower(k), "+")
-			var c combo
-			win := false
-			for _, p := range parts[:len(parts)-1] {
-				switch p {
-				case "lwin", "rwin":
-					win = true
-				case "shift":
-					c.shift = true
-				case "control", "ctrl":
-					c.ctrl = true
-				case "alt":
-					c.alt = true
-				}
+			c, win := parseKey(k)
+			if !win || k == "lwin+lmb" || k == "lwin+rmb" {
+				continue
 			}
-			last := parts[len(parts)-1]
-			c.vk = named[last]
-			if len(last) == 1 && (last[0] >= '0' && last[0] <= '9' || last[0] >= 'a' && last[0] <= 'z') {
-				c.vk = uint32(strings.ToUpper(last)[0])
+			if c.vk == 0 {
+				blockUnbound = false // a key we can't read: blocking might eat it
 			}
-			if win && c.vk != 0 { // ponytail: SUPER combos with the keys above only, the rest stays GlazeWM's
+			winKeys[c] = true
+			if takeOver(b.Cmd) && c.vk != 0 {
 				wsKeys[c] = len(wsCmds)
 			}
 		}
-		wsCmds = append(wsCmds, b.Cmd)
+		if takeOver(b.Cmd) {
+			wsCmds = append(wsCmds, b.Cmd)
+		}
 	}
+}
+
+var (
+	winKeys      = map[combo]bool{} // every SUPER combo keybinds.json binds
+	blockUnbound = true
+)
+
+// blockedKey runs in the keyboard hook: SUPER combos nobody bound go nowhere,
+// so Windows' own (Win+A quick settings, Win+W widgets, Win+R, Win+X, ...)
+// don't break the illusion. Ones to keep: "native": true rows in keybinds.json.
+func blockedKey(vk uint32) bool {
+	switch {
+	case !winDown || !blockUnbound || vk >= 0x10 && vk <= 0x12 || vk >= 0xA0 && vk <= 0xA5 || vk == vkMask:
+		return false // not SUPER, or a modifier
+	}
+	held := func(k uintptr) bool { r, _, _ := keyState.Call(k); return r&0x8000 != 0 }
+	return !winKeys[combo{vk, held(0x10), held(0x11), held(0x12)}]
 }
 
 // workspaceKey runs in the keyboard hook: true = the key was taken over.
@@ -209,7 +245,7 @@ func slider() {
 	// warm up so the first slide starts as fast as the rest: IPC connection, wallpaper
 	ipcFocus()
 	scr, _, _ := getDC.Call(0)
-	background(overlayRect(), scr)
+	background(overlayRect(fgMonitor()), scr)
 	releaseDC.Call(0, scr)
 	pump()
 }
@@ -255,49 +291,67 @@ func animationsOn() bool {
 	return s.Animations != nil && *s.Animations && (st.Gamemode == nil || !*st.Gamemode)
 }
 
-func focusedWorkspace(g *glaze) (string, error) {
+// wsInfo is a workspace from GlazeWM's "query monitors", with its monitor's rect.
+type wsInfo struct {
+	Name                  string
+	HasFocus, IsDisplayed bool
+	mon                   rect
+}
+
+func workspaces(g *glaze) ([]wsInfo, error) {
 	var res struct {
 		Data struct {
-			Workspaces []struct {
-				Name     string
-				HasFocus bool
+			Monitors []struct {
+				X, Y, Width, Height int32
+				Children            []wsInfo
 			}
 		}
 	}
-	b, err := g.query("query workspaces")
+	b, err := g.query("query monitors")
 	if err == nil {
 		err = json.Unmarshal(b, &res)
 	}
-	for _, w := range res.Data.Workspaces {
-		if w.HasFocus {
-			return w.Name, err
+	var out []wsInfo
+	for _, m := range res.Data.Monitors {
+		for _, w := range m.Children {
+			w.mon = rect{m.X, m.Y, m.X + m.Width, m.Y + m.Height}
+			out = append(out, w)
 		}
 	}
-	return "", err
+	return out, err
+}
+
+func focused(ws []wsInfo) wsInfo {
+	for _, w := range ws {
+		if w.HasFocus {
+			return w
+		}
+	}
+	return wsInfo{}
 }
 
 // ipcFocus returns the GlazeWM connection, dialing again after GlazeWM
-// restarted, and the focused workspace. Keeping it open saves 10-35ms a slide.
-func ipcFocus() (*glaze, string) {
+// restarted, and the workspaces. Keeping it open saves 10-35ms a slide.
+func ipcFocus() (*glaze, []wsInfo) {
 	for try := 0; try < 2; try++ {
 		if ipc == nil {
 			g, err := dialGlaze()
 			if err != nil {
-				return nil, ""
+				return nil, nil
 			}
 			ipc = g
 		}
-		if ws, err := focusedWorkspace(ipc); err == nil {
+		if ws, err := workspaces(ipc); err == nil {
 			return ipc, ws
 		}
 		ipc.c.Close()
 		ipc = nil
 	}
-	return nil, ""
+	return nil, nil
 }
 
 func slide(cmds []string) {
-	g, from := ipcFocus()
+	g, ws := ipcFocus()
 	if g == nil {
 		return
 	}
@@ -315,12 +369,31 @@ func slide(cmds []string) {
 		run()
 		return
 	}
-	if !overlayMu.TryLock() { // a SUPER+RMB drag has it
+	// the slide runs on the monitor the workspace shows up on: its own when
+	// GlazeWM has it on one, else the focused one. One already shown just takes focus.
+	from := focused(ws)
+	shown := map[string]bool{}
+	on := from.mon
+	for _, w := range ws {
+		shown[w.Name] = w.IsDisplayed
+		for _, c := range cmds {
+			if c == "focus --workspace "+w.Name {
+				on = w.mon
+			}
+		}
+	}
+	for _, c := range cmds {
+		if n, ok := strings.CutPrefix(c, "focus --workspace "); ok && shown[n] {
+			run()
+			return
+		}
+	}
+	if from.Name == "" || !overlayMu.TryLock() { // a SUPER+RMB drag has it
 		run()
 		return
 	}
 	defer overlayMu.Unlock()
-	ov := overlayRect()
+	ov := overlayRect(on)
 	w := ov.r - ov.l
 	desk := desktop(ov) // registered first: under every window
 	defer unregister(desk)
@@ -331,17 +404,19 @@ func slide(cmds []string) {
 	defer hideOverlay()
 
 	run()
-	to, _ := focusedWorkspace(g)
-	if to == "" || to == from {
+	ws, _ = workspaces(g)
+	to := focused(ws)
+	// --recent-workspace and friends can land on a shown workspace, or on another monitor
+	if to.Name == "" || to.Name == from.Name || shown[to.Name] || to.mon != on {
 		return
 	}
 	cur := thumbs(ov) // the old windows are cloaked now, so these are the new ones
 	defer unregister(cur)
 
 	dir := int32(1) // higher workspace comes in from the right
-	a, errA := strconv.Atoi(from)
-	b, errB := strconv.Atoi(to)
-	if errA == nil && errB == nil && b < a || (errA != nil || errB != nil) && to < from {
+	a, errA := strconv.Atoi(from.Name)
+	b, errB := strconv.Atoi(to.Name)
+	if errA == nil && errB == nil && b < a || (errA != nil || errB != nil) && to.Name < from.Name {
 		dir = -1
 	}
 	start := time.Now()
@@ -435,7 +510,8 @@ func thumbs(ov rect) []thumb {
 	for i := len(listed) - 1; i >= 0; i-- {
 		var r rect
 		windowRect.Call(listed[i], uintptr(unsafe.Pointer(&r)))
-		if r.r <= ov.l || r.l >= ov.r || r.b <= ov.t || r.t >= ov.b {
+		// by the centre: a window's invisible resize border pokes into the next monitor
+		if cx, cy := (r.l+r.r)/2, (r.t+r.b)/2; cx < ov.l || cx >= ov.r || cy < ov.t || cy >= ov.b {
 			continue // another monitor
 		}
 		var id uintptr
@@ -518,12 +594,16 @@ func background(ov rect, scr uintptr) uintptr {
 	return bgCache.dc
 }
 
-// overlayRect is the focused monitor between the bar and the dock, so both stay put.
-// ponytail: a workspace shown on another monitor gets no slide there.
-func overlayRect() rect {
+// fgMonitor is the foreground window's monitor.
+func fgMonitor() rect {
 	fg, _, _ := getFg.Call()
 	m, _, _ := monitorOf.Call(fg, 2)
-	ov, _ := monitorRects(m)
+	mon, _ := monitorRects(m)
+	return mon
+}
+
+// overlayRect is monitor ov between the bar and the dock, so both stay put.
+func overlayRect(ov rect) rect {
 	if r, ok := zebarRect("bar"); ok && r.b > ov.t && r.t <= ov.t && r.b < ov.b {
 		ov.t = r.b
 	}

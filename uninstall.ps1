@@ -23,6 +23,7 @@ foreach ($cls in 'Directory', 'Drive') {
 }
 Remove-Item -Recurse -Force (Join-Path $env:LOCALAPPDATA 'mw4w-files') -ErrorAction SilentlyContinue
 Remove-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' 'MW4W-GlazeWM' -ErrorAction SilentlyContinue
+Unregister-ScheduledTask 'MW4W-GlazeWM' -Confirm:$false -ErrorAction SilentlyContinue
 
 # Show the taskbar again.
 $dll = Get-ChildItem (Join-Path $Pack 'cache') -Filter 'mw4w-native-*.dll' -ErrorAction SilentlyContinue | Select-Object -First 1
