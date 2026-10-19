@@ -555,7 +555,8 @@ func unregister(ts []thumb) {
 	}
 }
 
-// wind is ML4W's "bezier = wind, 0.05, 0.9, 0.1, 1.05" at time t.
+// wind is ML4W's "bezier = wind, 0.05, 0.9, 0.1, 1.05" at time t, minus the 1.05:
+// that overshoot slid the windows past their place and back, a settle after the slide.
 func wind(t float64) float64 {
 	bez := func(s, p1, p2 float64) float64 { return 3*(1-s)*(1-s)*s*p1 + 3*(1-s)*s*s*p2 + s*s*s }
 	lo, hi := 0.0, 1.0
@@ -566,7 +567,7 @@ func wind(t float64) float64 {
 			hi = m
 		}
 	}
-	return bez((lo+hi)/2, 0.9, 1.05)
+	return bez((lo+hi)/2, 0.9, 1)
 }
 
 // background is the wallpaper behind the overlay, cached per wallpaper and rect.

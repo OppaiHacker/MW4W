@@ -5,7 +5,7 @@
 #   power <lock|logout|sleep|hibernate|reboot|shutdown>
 #   kill-active | empty-workspace | gamemode | bar-restart | bar-toggle
 #   set <base64-json> | toggle <setting> | run <base64-cmd> | launch <appid> | winicons
-#   media-loop | media-seek <seconds> | media-volume <0-100> | updates | shell <on|off> | autostart
+#   media-loop | media-seek <seconds> | media-volume <0-100> | updates | shell <on|off> | autostart | glaze-start
 #   quick | app-audio <b64> | audio-default <b64 id> | power-mode <0-2> | brightness <0-100> | radio <wifi|bluetooth> <on|off>
 #   wifi-scan | wifi-connect <b64 {ssid, pass}> | wifi-disconnect
 #   displays | display-set <b64 {displays, workspaces}> | display-keep | display-undo | display-topology <extend|clone|internal|external>
@@ -789,9 +789,19 @@ function Sync-Shell([bool]$on) {
 }
 
 # GlazeWM at sign-in: a logon task, not the Run key. Explorer runs Run entries one after another,
-# only after RunOnce and an idle wait: GlazeWM came ~100 s after the desktop. GlazeWM is uiAccess,
-# which a task can't CreateProcess (error 740), so rundll32 ShellExecutes it. As the shell,
+# only after RunOnce and an idle wait: GlazeWM came ~100 s after the desktop. As the shell,
 # mw4w-shell starts GlazeWM itself: the task is off then.
+# The task runs glaze-start: GlazeWM started that early can crash (0xc0000409) before the desktop
+# is up, so it tries again, like mw4w-shell does. Start-Process ShellExecutes: GlazeWM is uiAccess,
+# which CreateProcess refuses (error 740).
+function Start-GlazeAtLogon {
+  $exe = Join-Path $env:ProgramFiles 'glzr.io\GlazeWM\glazewm.exe'
+  for ($i = 0; $i -lt 10 -and -not (Get-Process glazewm -ErrorAction SilentlyContinue); $i++) {
+    Start-Process $exe -WorkingDirectory (Split-Path $exe)
+    Start-Sleep 5
+  }
+}
+
 function Sync-Autostart {
   $run = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
   $exe = Join-Path $env:ProgramFiles 'glzr.io\GlazeWM\glazewm.exe'
@@ -799,7 +809,7 @@ function Sync-Autostart {
   try {
     $set = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit 0 -Priority 4 -Disable:$asShell
     Register-ScheduledTask 'MW4W-GlazeWM' -Force -Settings $set `
-      -Action (New-ScheduledTaskAction -Execute 'rundll32.exe' -Argument "shell32.dll,ShellExec_RunDLL `"$exe`"") `
+      -Action (New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$Script`" glaze-start") `
       -Trigger (New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME") | Out-Null
     Remove-ItemProperty $run 'MW4W-GlazeWM' -ErrorAction SilentlyContinue
   } catch { Set-ItemProperty $run 'MW4W-GlazeWM' "`"$exe`"" }  # no Task Scheduler: the slow way
@@ -947,6 +957,7 @@ function Invoke-Mw4w([string]$Cmd, [string]$Arg) {
     'colors' { Update-Colors | Out-Null; Apply }
     'startup' { Startup }
     'autostart' { Sync-Autostart }
+    'glaze-start' { Start-GlazeAtLogon }
     'cache' { Update-Apps }
     'thumbs' { Update-Thumbs }
     'wallpaper' { Set-Wallpaper $Arg }

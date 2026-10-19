@@ -36,7 +36,7 @@ func TestWind(t *testing.T) {
 	for i := 0; i <= 100; i++ {
 		peak = math.Max(peak, wind(float64(i)/100))
 	}
-	if peak <= 1 || peak > 1.05 { // y2 = 1.05: a small overshoot, like Hyprland
+	if peak > 1+1e-6 { // no overshoot: the windows stop at their place, no settle back
 		t.Fatalf("overshoot %v", peak)
 	}
 }
