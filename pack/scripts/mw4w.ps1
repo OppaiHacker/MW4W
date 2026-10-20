@@ -8,7 +8,7 @@
 #   media-loop | media-seek <seconds> | media-volume <0-100> | updates | shell <on|off> | autostart
 #   quick | app-audio <b64> | audio-default <b64 id> | power-mode <0-2> | brightness <0-100> | radio <wifi|bluetooth> <on|off>
 #   wifi-scan | wifi-connect <b64 {ssid, pass}> | wifi-disconnect
-#   displays | display-set <b64 {displays, workspaces}> | display-keep | display-undo | display-topology <extend|clone|internal|external>
+#   displays | display-set <b64 {displays, workspaces}> | display-keep | display-undo | display-sync | display-topology <extend|clone|internal|external>
 param([string]$Cmd = 'apply', [string]$Arg = '')
 
 $ErrorActionPreference = 'Stop'
@@ -217,6 +217,10 @@ function Get-GlazeYaml {
       if ($i -ge 0) { foreach ($n in $p.Value) { $bind["$n"] = $i } }
     }
   }
+  # games (FiveM, GTA V, ...) stay out of GlazeWM: tiled, it moves them to whichever monitor or
+  # workspace a fullscreen mode switch leaves them on, and cloaks them there
+  $ignore = @($s.ignoreApps | Where-Object { $_ } | ForEach-Object { [regex]::Escape(($_ -replace '\.exe$', '')) })
+  $ignoreYaml = if ($ignore) { "`n      - window_process: { regex: " + (Q "^($($ignore -join '|'))") + " }" }
   $ws = foreach ($i in 1..10) { "  - name: '$i'" + $(if ($i -le 5) { "`n    keep_alive: true" }) + $(if ($bind.ContainsKey("$i")) { "`n    bind_to_monitor: $($bind["$i"])" }) }
 
   $yaml = @"
@@ -308,7 +312,7 @@ window_rules:
       - window_process: { equals: 'WINWORD' }
         window_class: { not_regex: 'OpusApp' }
       - window_process: { equals: 'POWERPNT' }
-        window_class: { not_regex: 'PPTFrameClass' }
+        window_class: { not_regex: 'PPTFrameClass' }$ignoreYaml
   # ML4W floats small utility windows.
   - commands: ['set-floating --centered']
     match:
@@ -882,6 +886,16 @@ function Move-BoundWorkspaces {
   if ($moved -and $back) { Glaze 'focus', '--workspace', $back }
 }
 
+# winmask (WM_DISPLAYCHANGE, settled) and startup: a monitor came back, maybe in another order, so
+# bind_to_monitor indexes are re-read and the workspaces GlazeWM parked elsewhere go back
+function Sync-Displays {
+  if (-not (Get-Settings).monitorWorkspaces -or -not (Test-Glaze)) { return }
+  $path = Join-Path $env:USERPROFILE '.glzr\glazewm\config.yaml'
+  $yaml = Get-GlazeYaml
+  if (-not (Test-Path $path) -or [IO.File]::ReadAllText($path) -ne $yaml) { Write-Utf8 $path $yaml; Glaze 'wm-reload-config' }
+  Move-BoundWorkspaces
+}
+
 # arg: base64 {displays?: plan, workspaces?: {device: [names]}}. New display settings revert
 # after 15s unless kept (display-keep), like Windows Settings does.
 function Set-Displays([string]$b64) {
@@ -932,6 +946,7 @@ function Startup {
   Sync-Taskbar
   $st = Get-State; $st.barHidden = $false; $st.autoPid = $null; Save-State $st
   if (-not (Test-Path (Join-Path $Pack 'colors.css')) -or -not (Test-Path (Join-Path $Cache 'glass.jpg'))) { Update-Colors | Out-Null; Update-Glaze }
+  Sync-Displays
   if ((Get-Settings).showMedia) { Start-Self 'media-loop' }
   # MW4W Files stays resident (index kept live, a window ready): opening one is instant
   $files = Join-Path $Pack 'bin\mw4w-files.exe'
@@ -983,6 +998,7 @@ function Invoke-Mw4w([string]$Cmd, [string]$Arg) {
     'display-set' { Set-Displays $Arg }
     'display-keep' { Remove-Item (Join-Path $Cache 'displays-revert.json') -ErrorAction SilentlyContinue; Update-Displays }
     'display-undo' { Undo-Displays '' }
+    'display-sync' { Sync-Displays }
     'display-revert' { Undo-Displays $Arg }  # Start-Self'd: sleeps 15s
     'display-topology' { if ($Arg -in 'extend', 'clone', 'internal', 'external') { Start-Process DisplaySwitch.exe "/$Arg"; Start-Sleep 3; Update-Displays } }
     'run' { Start-Self 'run-now', $Arg }

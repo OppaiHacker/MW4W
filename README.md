@@ -252,6 +252,8 @@ On Windows the expensive part is starting a process (0.3–0.5 s here: ShellExec
 - The Windows taskbar is fully hidden by `winmask --hide-taskbar`. It comes back when GlazeWM exits.
 - Win+L always locks the screen, because Windows doesn't let anyone take over that shortcut.
 - Window borders and corners need Windows 11.
+- Games in `ignoreApps` (`settings.json`; default FiveM, GTA V, RedM, RDR2; process name prefixes) are left alone by GlazeWM: tiled, a fullscreen mode switch made GlazeWM move them to another monitor or hide them on another workspace. They stay on top of whatever workspace their monitor shows. Add your own and press SUPER+SHIFT+R.
+- With workspaces bound to displays (SUPER+CTRL+M), `winmask` puts them back 3 s after a display change (a monitor waking up, a game switching modes) and at startup.
 
 ## License
 
