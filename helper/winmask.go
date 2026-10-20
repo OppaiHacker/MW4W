@@ -13,6 +13,7 @@
 //
 // SUPER+left/right drag moves/resizes windows, see drag.go. Windows can't be
 // minimized and ALT+Tab is off. Workspace keybinds slide, see slide.go.
+// Multiple monitors, fullscreen windows and focus follows mouse: screens.go.
 //
 // --hide-taskbar hides the Windows taskbar completely (not just auto-hide) and
 // keeps it hidden when Explorer shows it again. --exit stops the running
@@ -20,12 +21,14 @@
 package main
 
 import (
+	"encoding/json"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -86,7 +89,7 @@ var (
 	dpiAware     = user32.NewProc("SetProcessDpiAwarenessContext")
 	getLong      = user32.NewProc("GetWindowLongPtrW")
 	setLong      = user32.NewProc("SetWindowLongPtrW")
-	redrawWake   = make(chan struct{}, 1)
+	redrawWake   = make(chan uintptr, 8) // new app windows
 	curThread    = syscall.NewLazyDLL("kernel32.dll").NewProc("GetCurrentThreadId")
 	winDown      bool
 	blocked      [256]bool // keydowns blockedKey ate: their keyups go too
@@ -167,16 +170,6 @@ func title(h uintptr) string {
 	return syscall.UTF16ToString(b[:n])
 }
 
-// onMinimize undoes minimizing (title bar button, Win+D, ...): Hyprland has
-// no minimize. ponytail: also restores exclusive-fullscreen games that
-// minimize on alt-tab; skip them here if that ever bites.
-func onMinimize(_, _, hwnd, idObject, _, _, _ uintptr) uintptr {
-	if idObject == 0 && !strings.HasPrefix(title(hwnd), "Zebar") {
-		showAsync.Call(hwnd, 9) // SW_RESTORE, without waiting on the app
-	}
-	return 0
-}
-
 // appWindow: a top-level window with a title bar, the kind GlazeWM tiles.
 func appWindow(h uintptr) bool {
 	root, _, _ := ancestor.Call(h, 2)                              // GA_ROOT
@@ -188,21 +181,55 @@ func appWindow(h uintptr) bool {
 // redrawer re-applies GlazeWM's layout shortly after a new window appears:
 // apps like Zen/Firefox size their new (popup) window themselves after
 // GlazeWM tiled it, and GlazeWM keeps that wrong size until the window is
-// touched. Hyprland never lets a client resize its tile.
+// touched. Hyprland never lets a client resize its tile. Only when the new
+// window is off its tile: a redraw moves every window, a fullscreen game too.
 // ponytail: fixed 0.3s + 1s retries, an app resizing later still slips through.
 func redrawer() {
-	for range redrawWake {
+	for h := range redrawWake {
+		hs := []uintptr{h}
 		for _, d := range []time.Duration{300, 700} {
 			time.Sleep(d * time.Millisecond)
+			for len(redrawWake) > 0 { // windows that came meanwhile wait along
+				hs = append(hs, <-redrawWake)
+			}
 			if dragging.Load() {
 				continue // a redraw would snap the dragged window back
 			}
 			if g, err := dialGlaze(); err == nil {
-				g.ask("command wm-redraw")
+				if offTile(g, hs) {
+					g.ask("command wm-redraw")
+				}
 				g.c.Close()
 			}
 		}
 	}
+}
+
+// offTile: one of the tiling windows hs isn't where GlazeWM tiled it.
+func offTile(g *glaze, hs []uintptr) bool {
+	var res struct {
+		Data struct {
+			Windows []struct {
+				Handle              uintptr
+				X, Y, Width, Height int32
+				State               struct{ Type string }
+			}
+		}
+	}
+	if b, err := g.query("query windows"); err != nil || json.Unmarshal(b, &res) != nil {
+		return false
+	}
+	for _, w := range res.Data.Windows {
+		if w.State.Type != "tiling" || !slices.Contains(hs, w.Handle) {
+			continue
+		}
+		var r rect // the visible frame: GlazeWM sizes the window so it fills the tile
+		if hr, _, _ := dwmAttr.Call(w.Handle, dwmBounds, uintptr(unsafe.Pointer(&r)), unsafe.Sizeof(r)); hr != 0 ||
+			abs(r.l-w.X) > 4 || abs(r.t-w.Y) > 4 || abs(r.r-w.X-w.Width) > 4 || abs(r.b-w.Y-w.Height) > 4 {
+			return true
+		}
+	}
+	return false
 }
 
 // onShow focuses Zebar "mw4w" popups (every widget but the bar, dock and island) when they appear.
@@ -212,7 +239,7 @@ func onShow(_, _, hwnd, idObject, _, _, _ uintptr) uintptr {
 	}
 	if appWindow(hwnd) && !strings.HasPrefix(title(hwnd), "Zebar") {
 		select {
-		case redrawWake <- struct{}{}:
+		case redrawWake <- hwnd:
 		default:
 		}
 	}
@@ -465,11 +492,17 @@ func main() {
 		winEventHook.Call(0x0016, 0x0016, 0, syscall.NewCallback(onMinimize), 0, 0, 0)
 		// EVENT_SYSTEM_MOVESIZESTART
 		winEventHook.Call(0x000A, 0x000A, 0, syscall.NewCallback(onMoveSizeStart), 0, 0, 0)
+		// EVENT_SYSTEM_FOREGROUND: on this thread, so it comes in order with the minimize events
+		winEventHook.Call(0x0003, 0x0003, 0, syscall.NewCallback(onForeground), 0, 0, 0)
+		// EVENT_OBJECT_LOCATIONCHANGE
+		winEventHook.Call(0x800B, 0x800B, 0, syscall.NewCallback(onLocation), 0, 0, 0)
 		pump()
 	}()
 	go dragger()
 	go redrawer()
 	go actor()
+	go screens()
+	go follower()
 	loadWorkspaceKeys()
 	go slider()
 

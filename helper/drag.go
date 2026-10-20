@@ -113,6 +113,10 @@ func dragTarget(x, y int32) uintptr {
 func mouseHook(code int, wparam uintptr, lparam uintptr) uintptr {
 	if code == 0 {
 		m := (*msllhookstruct)(unsafe.Pointer(lparam))
+		if wparam == wmMouseMove {
+			cursorAt.Store(uint64(uint32(m.x))<<32 | uint64(uint32(m.y)))
+			wake(ffmWake) // screens.go: focus follows the mouse
+		}
 		switch {
 		case drag != 0 && wparam == dragUp:
 			drag = 0
@@ -309,13 +313,16 @@ func monitorRects(m uintptr) (mon, work rect) {
 	return mi.mon, mi.work
 }
 
-// node is a container in GlazeWM's "query workspaces" tree.
+// node is a container in GlazeWM's "query workspaces" / "query monitors" tree.
 type node struct {
 	ID              string
 	Type            string // workspace, split, window
+	Name            string // workspace
 	TilingDirection string
 	Handle          uintptr
-	State           struct{ Type string }
+	State           struct{ Type string } // window: tiling, floating, fullscreen, minimized
+	HasFocus        bool                  // on the path down to the focused container
+	IsDisplayed     bool                  // workspace
 	Children        []node
 }
 
@@ -578,6 +585,13 @@ func (g *glaze) ask(msg string) error {
 // query sends msg and returns the next text message.
 func (g *glaze) query(msg string) ([]byte, error) {
 	g.c.SetDeadline(time.Now().Add(2 * time.Second))
+	if err := g.send(msg); err != nil {
+		return nil, err
+	}
+	return g.read()
+}
+
+func (g *glaze) send(msg string) error {
 	p := []byte(msg)
 	f := []byte{0x81} // FIN + text
 	if len(p) < 126 {
@@ -586,9 +600,12 @@ func (g *glaze) query(msg string) ([]byte, error) {
 		f = append(f, 0x80|126, byte(len(p)>>8), byte(len(p)))
 	}
 	f = append(f, 0, 0, 0, 0) // zero mask key: the payload goes unchanged
-	if _, err := g.c.Write(append(f, p...)); err != nil {
-		return nil, err
-	}
+	_, err := g.c.Write(append(f, p...))
+	return err
+}
+
+// read returns the next text message: a reply, or an event of a subscription.
+func (g *glaze) read() ([]byte, error) {
 	var out []byte
 	for {
 		var h [2]byte

@@ -215,7 +215,8 @@ pack/                     -> ~/.glzr/zebar/mw4w
   bin/mw4w-shell.exe      the shell when MW4W replaces Explorer (source: shell/)
   bin/mw4w-files.exe      MW4W Files, the file manager (source: files/)
   bin/winmask.exe         SUPER doesn't open Start (CTRL+Esc does), SUPER+mouse, workspace slide, hides the taskbar,
-                          handles popup keybindings, @mw4w and shell-exec itself (see Speed)
+                          handles popup keybindings, @mw4w and shell-exec itself (see Speed), focus follows mouse,
+                          multiple monitors and fullscreen windows (see Multiple monitors and fullscreen)
   lib/                    zebar.js (bundled, works offline), shared JS/CSS, icons.js (line icons, media helpers)
 installer/                MW4W-Setup.exe: the repo in one exe that runs install.ps1 (build.sh builds it)
 shell/                    mw4w-shell source (GOOS=windows go build -trimpath -ldflags "-H windowsgui -s -w" -o ../pack/bin/mw4w-shell.exe)
@@ -232,6 +233,17 @@ Add your own keybindings in `keybinds.json`, then press SUPER+SHIFT+R. `cmd` acc
 `mw4w.ps1 selftest` checks the color and config generators.
 Script errors go to `~/.glzr/zebar/mw4w/cache/error.log`.
 
+## Multiple monitors and fullscreen
+
+GlazeWM ties every window to a workspace and every workspace to a monitor. `winmask` (`helper/screens.go`, `helper/homes.go`)
+fills the gaps that made windows jump between monitors or vanish. The rules are the same for every app and window; none is matched by name:
+
+- **A fullscreen window belongs to the monitor it is fullscreen on.** A game or video that goes fullscreen on another monitor than its workspace's is moved to the workspace shown there and keeps the focus. GlazeWM on its own pulled it back to its workspace's monitor (the app pushed back, so it jumped) and hid it whenever that workspace was switched away, even though it was on screen elsewhere. "Fullscreen" means the window covers its whole monitor and isn't maximized, GlazeWM's own test. An app that keeps jumping is followed at most twice in 10 s.
+- **Focus follows the mouse, but not off a fullscreen window.** `winmask` does focus-follows-mouse instead of GlazeWM (setting: Focus follows mouse). While a fullscreen window has the focus, moving the cursor to another monitor doesn't take it away; click to switch. Before, a game lost the focus, and minimized itself, as soon as the cursor touched the next monitor. Like GlazeWM, it doesn't follow while a button is held or while a popup or a window GlazeWM doesn't manage has the focus.
+- **Minimize.** Like Hyprland, a window minimized from its title bar comes back at once. A window that minimizes itself while another one has the focus, like a fullscreen game does when it loses the focus, stays minimized until it gets the focus again (dock, its workspace, a click), and is then restored. Before, `winmask` restored it right away and fought the game for the screen.
+- **Workspaces come back with their monitor.** When a monitor goes away (unplugged, a DisplayPort monitor asleep, a mode switch that drops it for a moment), GlazeWM parks its workspaces hidden on another monitor and never moves them back. `winmask` remembers each workspace's monitor and moves them back as soon as it returns, showing the workspace it showed before. Moving a workspace by hand makes the new monitor its home. Workspaces bound to a display in Displays (SUPER+CTRL+M) always go to that one. The homes survive restarts (`cache/workspaces.json`). If a fullscreen window has the focus, this waits until it loses it.
+- After a display change settles (3 s), the display bindings are re-read, since Windows can list the monitors in another order.
+
 ## Speed
 
 On Windows the expensive part is starting a process (0.3–0.5 s here: ShellExecute in GlazeWM + antivirus), and PowerShell adds another ~1 s. So:
@@ -246,14 +258,12 @@ On Windows the expensive part is starting a process (0.3–0.5 s here: ShellExec
 ## Limitations
 
 - Switching workspaces is an ML4W-like slide (`workspaces, 1, 5, wind`) done by `winmask`: it intercepts the workspace keybindings from `keybinds.json` and slides the windows as snapshots over the wallpaper. Only SUPER keybindings animate (digits, Tab, arrows, letters, `oem_tilde`). Clicking a workspace on the bar switches instantly. Window content (e.g. video) freezes for 0.5 s. No background blur. Turn it off with SUPER+SHIFT+A.
-- SUPER+LMB moves, SUPER+RMB resizes a window (done by `winmask`). Like Hyprland, windows can't be dragged by the title bar or edges without SUPER. Windows can't be minimized and ALT+Tab does nothing. A moved tiled window is inserted where you drop it. Resizing a tile moves the split with its neighbor (see Speed) and does nothing on an axis without a neighbor.
-- Some apps (e.g. Zen with popups) resize a new window themselves after GlazeWM has placed it. So `winmask` asks GlazeWM to lay out windows again (`wm-redraw`) 0.3 s and 1 s after a new window appears. An app that resizes later still slips through.
+- SUPER+LMB moves, SUPER+RMB resizes a window (done by `winmask`). Like Hyprland, windows can't be dragged by the title bar or edges without SUPER. Windows can't be minimized from the title bar and ALT+Tab does nothing (see Multiple monitors and fullscreen for windows that minimize themselves). A moved tiled window is inserted where you drop it. Resizing a tile moves the split with its neighbor (see Speed) and does nothing on an axis without a neighbor.
+- Some apps (e.g. Zen with popups) resize a new window themselves after GlazeWM has placed it. So `winmask` checks a new window 0.3 s and 1 s after it appears and asks GlazeWM to lay out windows again (`wm-redraw`) when it isn't on its tile. An app that resizes later still slips through.
 - GlazeWM cloaks other workspaces the way Windows hides other virtual desktops, so Firefox/Zen would open an external link in a new window (Zen: plus a tab in the old one). The installer sets `widget.prefer_windows_on_current_virtual_desktop = false` in their profiles; restart the browser afterwards.
 - The Windows taskbar is fully hidden by `winmask --hide-taskbar`. It comes back when GlazeWM exits.
 - Win+L always locks the screen, because Windows doesn't let anyone take over that shortcut.
 - Window borders and corners need Windows 11.
-- Games in `ignoreApps` (`settings.json`; default FiveM, GTA V, RedM, RDR2; process name prefixes) are left alone by GlazeWM: tiled, a fullscreen mode switch made GlazeWM move them to another monitor or hide them on another workspace. They stay on top of whatever workspace their monitor shows. Add your own and press SUPER+SHIFT+R.
-- With workspaces bound to displays (SUPER+CTRL+M), `winmask` puts them back 3 s after a display change (a monitor waking up, a game switching modes) and at startup.
 
 ## License
 

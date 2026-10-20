@@ -217,10 +217,6 @@ function Get-GlazeYaml {
       if ($i -ge 0) { foreach ($n in $p.Value) { $bind["$n"] = $i } }
     }
   }
-  # games (FiveM, GTA V, ...) stay out of GlazeWM: tiled, it moves them to whichever monitor or
-  # workspace a fullscreen mode switch leaves them on, and cloaks them there
-  $ignore = @($s.ignoreApps | Where-Object { $_ } | ForEach-Object { [regex]::Escape(($_ -replace '\.exe$', '')) })
-  $ignoreYaml = if ($ignore) { "`n      - window_process: { regex: " + (Q "^($($ignore -join '|'))") + " }" }
   $ws = foreach ($i in 1..10) { "  - name: '$i'" + $(if ($i -le 5) { "`n    keep_alive: true" }) + $(if ($bind.ContainsKey("$i")) { "`n    bind_to_monitor: $($bind["$i"])" }) }
 
   $yaml = @"
@@ -235,7 +231,8 @@ general:
     - 'shell-exec --hide-window taskkill /F /IM zebar.exe'
     - $(Q "shell-exec $(Join-Path $Pack 'bin\winmask.exe') --exit")
   config_reload_commands: []
-  focus_follows_cursor: $(([bool]$s.focusFollowsMouse).ToString().ToLower())
+  # winmask does focusFollowsMouse (helper\screens.go): never off a fullscreen window
+  focus_follows_cursor: false
   toggle_workspace_on_refocus: false
   cursor_jump:
     enabled: true
@@ -312,7 +309,7 @@ window_rules:
       - window_process: { equals: 'WINWORD' }
         window_class: { not_regex: 'OpusApp' }
       - window_process: { equals: 'POWERPNT' }
-        window_class: { not_regex: 'PPTFrameClass' }$ignoreYaml
+        window_class: { not_regex: 'PPTFrameClass' }
   # ML4W floats small utility windows.
   - commands: ['set-floating --centered']
     match:
@@ -861,39 +858,13 @@ function Get-DisplayPlan {
   foreach ($d in [Mw4w.Displays]::List()) { [ordered]@{ device = $d.Device; mode = $d.Mode; x = $d.X; y = $d.Y; orientation = $d.Orientation; primary = $d.Primary; scale = $d.Scale } }
 }
 
-# GlazeWM applies bind_to_monitor only to workspaces it creates: move the existing ones over
-function Move-BoundWorkspaces {
-  $binds = (Get-Settings).monitorWorkspaces
-  if (-not $binds -or -not (Test-Glaze)) { return }
-  $back = @((Glaze-Ipc 'query workspaces').data.workspaces | Where-Object hasFocus)[0].name
-  $moved = $false
-  foreach ($p in $binds.PSObject.Properties) {
-    foreach ($n in $p.Value) {
-      for ($try = 0; $try -lt 4; $try++) {  # ponytail: one monitor per step, 4 steps covers 5 side by side
-        $mons = @((Glaze-Ipc 'query monitors').data.monitors)
-        $to = @($mons | Where-Object deviceName -eq $p.Name)[0]
-        $from = @($mons | Where-Object { $_.children.name -contains "$n" })[0]
-        if (-not $to -or -not $from -or $from.deviceName -eq $to.deviceName) { break }
-        $dx = ($to.x + $to.width / 2) - ($from.x + $from.width / 2)
-        $dy = ($to.y + $to.height / 2) - ($from.y + $from.height / 2)
-        $dir = if ([Math]::Abs($dx) -ge [Math]::Abs($dy)) { if ($dx -gt 0) { 'right' } else { 'left' } } elseif ($dy -gt 0) { 'down' } else { 'up' }
-        Glaze 'focus', '--workspace', "$n"
-        Glaze 'move-workspace', '--direction', $dir
-        $moved = $true
-      }
-    }
-  }
-  if ($moved -and $back) { Glaze 'focus', '--workspace', $back }
-}
-
-# winmask (WM_DISPLAYCHANGE, settled) and startup: a monitor came back, maybe in another order, so
-# bind_to_monitor indexes are re-read and the workspaces GlazeWM parked elsewhere go back
+# winmask (WM_DISPLAYCHANGE, settled) and startup: monitors came or went, maybe in another order, so
+# bind_to_monitor indexes are read again. Moving the workspaces back is winmask's (helper\homes.go).
 function Sync-Displays {
   if (-not (Get-Settings).monitorWorkspaces -or -not (Test-Glaze)) { return }
   $path = Join-Path $env:USERPROFILE '.glzr\glazewm\config.yaml'
   $yaml = Get-GlazeYaml
   if (-not (Test-Path $path) -or [IO.File]::ReadAllText($path) -ne $yaml) { Write-Utf8 $path $yaml; Glaze 'wm-reload-config' }
-  Move-BoundWorkspaces
 }
 
 # arg: base64 {displays?: plan, workspaces?: {device: [names]}}. New display settings revert
@@ -915,7 +886,7 @@ function Set-Displays([string]$b64) {
     Save-Json (Join-Path $Cache 'displays-revert.json') ([ordered]@{ id = "$id"; at = $id + 15000; prev = $prev })
     Start-Self 'display-revert', "$id"
   }
-  Update-Glaze; Move-BoundWorkspaces; Update-Displays
+  Update-Glaze; Update-Displays  # winmask moves bound workspaces over on GlazeWM's config reload
 }
 
 # $id: only the change that started this timer ("" = now)
@@ -926,7 +897,7 @@ function Undo-Displays([string]$id) {
   if (-not $rv -or ($id -and $rv.id -ne $id)) { return }
   Remove-Item $path
   Set-DisplayPlan $rv.prev
-  Update-Glaze; Move-BoundWorkspaces; Update-Displays
+  Update-Glaze; Update-Displays
 }
 
 # Icons for the bar's taskbar module: cache\icons\proc-<process>.png

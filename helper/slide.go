@@ -268,6 +268,7 @@ func slideProc(h, msg, wp, lp uintptr) uintptr {
 		slide(clicked)
 		return 0
 	case 0x007E: // WM_DISPLAYCHANGE: a monitor came or went, or a game switched modes
+		wake(displayWake)            // screens.go puts the workspaces back
 		setTimer.Call(h, 1, 3000, 0) // restarted by every change: sync once it settles
 		return 0
 	case 0x0113: // WM_TIMER

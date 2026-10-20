@@ -23,6 +23,5 @@
   "showMedia": true,
   "showTray": true,
   "dock": true,
-  "wallpaperAutoMinutes": 15,
-  "ignoreApps": ["FiveM", "GTA5", "PlayGTAV", "RedM", "RDR2"]
+  "wallpaperAutoMinutes": 15
 }
