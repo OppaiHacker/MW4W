@@ -102,7 +102,9 @@ Folders open in MW4W Files with *Settings → System → MW4W Files opens folder
 Toasts, the volume/brightness OSD, Win+A/Win+N panels and the Windows tray come from Explorer and are gone;
 the bar has its own tray (Zebar). If GlazeWM is missing or keeps crashing, `mw4w-shell` starts Explorer, so a broken
 install never ends at a black screen; CTRL+SHIFT+ESC → *Run new task* → `explorer` works too. `mw4w.ps1 shell off`
-or the uninstaller switch back.
+or the uninstaller switch back. Some antiviruses (F-Secure DeepGuard) block `mw4w-shell` as a shell replacement:
+Windows then comes up with Explorer and the `MW4W-GlazeWM` logon task starts GlazeWM anyway. Allow `bin\mw4w-shell.exe`
+in the antivirus to keep MW4W as the shell.
 
 This is a user-mode shell like Explorer itself — nothing of a window manager or shell belongs in the kernel
 (a driver could only crash the machine and needs a Microsoft signature).
@@ -155,18 +157,19 @@ powershell -ExecutionPolicy Bypass -File install.ps1
 
 The installer:
 
-1. installs GlazeWM and Zebar with winget if they are missing,
+1. installs GlazeWM, Zebar, PowerShell 7 and JetBrainsMono Nerd Font with winget if they are missing,
 2. backs up `~/.glzr/glazewm/config.yaml` and `~/.glzr/zebar/settings.json` (`*.bak-<date>`),
 3. copies the pack to `~/.glzr/zebar/mw4w` and the wallpapers to `~/Pictures/Wallpapers`,
 4. detects the default browser and terminal (Alacritty > wt > powershell); Alacritty gets an ML4W-style config (`%APPDATA%\alacritty`) with colors from the wallpaper,
-5. makes Firefox/Zen open external links in the existing window (see Limitations),
-6. sets the MW4W wallpaper, generates colors and the GlazeWM config,
-7. adds GlazeWM to autostart (a logon task: Explorer runs Run-key entries one by one after an idle wait, ~100 s late on a busy sign-in). GlazeWM then starts Zebar (bar, dock and hidden popups), `winmask` and `mw4w.ps1 startup`.
+5. installs fastfetch (winget), copies its config to `~/.config/fastfetch` and runs it from the pwsh profile on every new terminal,
+6. makes Firefox/Zen open external links in the existing window (see Limitations),
+7. sets the MW4W wallpaper, generates colors and the GlazeWM config,
+8. adds GlazeWM to autostart (a logon task: Explorer runs Run-key entries one by one after an idle wait, ~100 s late on a busy sign-in). GlazeWM then starts Zebar (bar, dock and hidden popups), `winmask` and `mw4w.ps1 startup`.
 
 Flags: `-NoStart` (don't start anything), `-KeepWallpaper` (keep the current wallpaper).
 Uninstall: `uninstall.ps1` (restores the config backups and shows the taskbar again).
 
-Optional: `winget install Alacritty.Alacritty DEVCOM.JetBrainsMonoNerdFont` before installing, for the ML4W terminal look.
+Optional: `winget install Alacritty.Alacritty` before installing, for the ML4W terminal look.
 
 ## Main keybindings (SUPER = Win)
 
@@ -209,6 +212,7 @@ pack/                     -> ~/.glzr/zebar/mw4w
   dock.html               nwg-dock: open apps at the bottom of the screen
   keybinds.json           keybindings: the GlazeWM config and the cheat sheet are generated from it
   alacritty.toml          Alacritty config template (colors: colors.toml written by mw4w.ps1)
+  fastfetch.jsonc         fastfetch config (-> ~/.config/fastfetch, Nerd Font icons)
   defaults.json           default settings (your changes go to settings.json)
   scripts/mw4w.ps1        the brain: colors, GlazeWM config, wallpapers, power, gamemode, bar, media loop, updates
   scripts/Native.cs       Win32: app icons, wallpaper, dominant color, taskbar, per-app volume

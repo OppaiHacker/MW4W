@@ -39,5 +39,14 @@ foreach ($f in "$Glzr\glazewm\config.yaml", "$Glzr\zebar\settings.json") {
   if ($bak) { Copy-Item $bak.FullName $f -Force } else { Remove-Item $f -ErrorAction SilentlyContinue }
 }
 
+# fastfetch greeting out of the pwsh profile (fastfetch itself and its config stay)
+$pwshProfile = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'PowerShell\Microsoft.PowerShell_profile.ps1'
+if (Test-Path $pwshProfile) {
+  # IO.File: Windows PowerShell's Get/Set-Content would read and write ANSI
+  $p = [IO.File]::ReadAllText($pwshProfile)
+  $q = $p -replace '(?s)\r?\n?# >>> MW4W fastfetch.*?# <<< MW4W fastfetch\r?\n?', ''
+  if ($q -ne $p) { [IO.File]::WriteAllText($pwshProfile, $q, (New-Object Text.UTF8Encoding $false)) }
+}
+
 Remove-Item $Pack -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host 'MW4W removed.' -ForegroundColor Green

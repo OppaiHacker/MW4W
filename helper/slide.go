@@ -140,8 +140,9 @@ func parseKey(k string) (c combo, win bool) {
 // bound SUPER combo for blockedKey.
 func loadWorkspaceKeys() {
 	var kb []struct {
-		Keys []string
-		Cmd  []string
+		Keys   []string
+		Cmd    []string
+		Native bool
 	}
 	readJSON("keybinds.json", &kb)
 	winKeys[combo{vk: 'R'}] = true // GlazeWM's resize mode (mw4w.ps1 Get-GlazeYaml)
@@ -155,6 +156,7 @@ func loadWorkspaceKeys() {
 				blockUnbound = false // a key we can't read: blocking might eat it
 			}
 			winKeys[c] = true
+			nativeKeys[c] = b.Native
 			if takeOver(b.Cmd) && c.vk != 0 {
 				wsKeys[c] = len(wsCmds)
 			}
@@ -167,8 +169,15 @@ func loadWorkspaceKeys() {
 
 var (
 	winKeys      = map[combo]bool{} // every SUPER combo keybinds.json binds
+	nativeKeys   = map[combo]bool{} // the "native": true ones, which go to Windows
 	blockUnbound = true
 )
+
+// nativeKey runs in the keyboard hook: a SUPER combo Windows handles itself (Win+V, ...).
+func nativeKey(vk uint32) bool {
+	held := func(k uintptr) bool { r, _, _ := keyState.Call(k); return r&0x8000 != 0 }
+	return nativeKeys[combo{vk, held(0x10), held(0x11), held(0x12)}]
+}
 
 // blockedKey runs in the keyboard hook: SUPER combos nobody bound go nowhere,
 // so Windows' own (Win+A quick settings, Win+W widgets, Win+R, Win+X, ...)

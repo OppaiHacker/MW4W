@@ -22,6 +22,21 @@ foreach ($d in @(@{ id = 'glzr-io.glazewm'; exe = $GlazeExe }, @{ id = 'glzr-io.
   else { winget install --id $d.id -e --silent --accept-package-agreements --accept-source-agreements; if (-not (Test-Path $d.exe)) { throw "Failed to install $($d.id)" } }
 }
 
+Step 'Terminal: PowerShell 7, JetBrainsMono Nerd Font'
+# full path: GlazeWM-started terminals keep the pre-install PATH until the next sign-in
+$PwshExe = (Get-Command pwsh -ErrorAction SilentlyContinue).Source
+if (-not $PwshExe) {
+  winget install --id Microsoft.PowerShell -e --silent --accept-package-agreements --accept-source-agreements
+  $PwshExe = Join-Path $env:ProgramFiles 'PowerShell\7\pwsh.exe'
+  if (-not (Test-Path $PwshExe)) { $PwshExe = $null; Write-Warning 'PowerShell 7 install failed, staying on Windows PowerShell' }
+} else { Write-Host '    Microsoft.PowerShell ok' }
+$fontKeys = 'HKLM:\Software\Microsoft\Windows NT\CurrentVersion\Fonts', 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Fonts'
+if ($fontKeys | Where-Object { (Get-ItemProperty $_ -ErrorAction SilentlyContinue).PSObject.Properties.Name -like 'JetBrainsMono NF*' }) { Write-Host '    JetBrainsMono NF ok' }
+else {
+  winget install --id DEVCOM.JetBrainsMonoNerdFont -e --silent --accept-package-agreements --accept-source-agreements
+  if ($LASTEXITCODE) { Write-Warning 'JetBrainsMono Nerd Font install failed: terminal icons show as boxes' }
+}
+
 Step 'Backup of existing configs'
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 foreach ($f in "$Glzr\glazewm\config.yaml", "$Glzr\zebar\settings.json") {
@@ -74,8 +89,38 @@ if ((Test-Path $AlacrittyExe) -and -not (Test-Path $alaCfg)) {
   Step "Alacritty config -> $alaCfg"
   New-Item -ItemType Directory -Force (Split-Path $alaCfg) | Out-Null
   $t = Get-Content (Join-Path $Repo 'pack\alacritty.toml') -Raw
-  if (Get-Command pwsh -ErrorAction SilentlyContinue) { $t += "`n[terminal.shell]`nprogram = `"pwsh`"`n" }
+  if ($PwshExe) { $t += "`n[terminal.shell]`nprogram = '$PwshExe'`n" }
   Write-Utf8 $alaCfg $t
+}
+
+# fastfetch greets every interactive pwsh. Only pwsh: Windows PowerShell's default
+# execution policy (Restricted) would print an error for a new profile instead.
+$pwshProfile = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'PowerShell\Microsoft.PowerShell_profile.ps1'
+if ($PwshExe) {
+  Step 'fastfetch on terminal start'
+  # winget's portable install dir: until the next sign-in, terminals started by GlazeWM keep the old PATH
+  $ffDir = Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Packages\Fastfetch-cli.Fastfetch_Microsoft.Winget.Source_8wekyb3d8bbwe'
+  if (-not ((Get-Command fastfetch -ErrorAction SilentlyContinue) -or (Test-Path $ffDir))) {
+    winget install --id Fastfetch-cli.Fastfetch -e --silent --accept-package-agreements --accept-source-agreements
+    if ($LASTEXITCODE) { Write-Warning 'fastfetch install failed, skipping the greeting' }
+  }
+  $ffCfg = Join-Path $env:USERPROFILE '.config\fastfetch\config.jsonc'
+  if (-not (Test-Path $ffCfg)) {
+    New-Item -ItemType Directory -Force (Split-Path $ffCfg) | Out-Null
+    Copy-Item (Join-Path $Repo 'pack\fastfetch.jsonc') $ffCfg
+  }
+  if (-not ((Test-Path $pwshProfile) -and (Select-String -Path $pwshProfile -Pattern '>>> MW4W fastfetch' -SimpleMatch -Quiet))) {
+    New-Item -ItemType Directory -Force (Split-Path $pwshProfile) | Out-Null
+    # -NonInteractive shells (scripts, tools) stay quiet
+    Add-Content $pwshProfile @"
+
+# >>> MW4W fastfetch
+`$ffDir = '$ffDir'
+if ((Test-Path `$ffDir) -and (`$env:Path -notlike "*`$ffDir*")) { `$env:Path += ";`$ffDir" }
+if ((Get-Command fastfetch -ErrorAction SilentlyContinue) -and -not ([Environment]::GetCommandLineArgs() -match '^-NonI')) { fastfetch }
+# <<< MW4W fastfetch
+"@
+  }
 }
 
 # GlazeWM cloaks other workspaces like virtual desktops, so Firefox/Zen open an

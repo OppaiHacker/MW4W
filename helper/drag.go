@@ -120,7 +120,7 @@ func mouseHook(code int, wparam uintptr, lparam uintptr) uintptr {
 			return 1
 		case drag != 0 && wparam == wmMouseMove:
 			post(func(j *dragJob) { j.pt, j.dirty = [2]int32{m.x, m.y}, true })
-		case drag == 0 && winDown && (wparam == wmLButtonDown || wparam == wmRButtonDown):
+		case drag == 0 && (wparam == wmLButtonDown || wparam == wmRButtonDown) && superDown():
 			h := dragTarget(m.x, m.y)
 			if h == 0 {
 				break

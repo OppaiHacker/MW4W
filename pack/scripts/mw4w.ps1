@@ -790,12 +790,18 @@ function Sync-Shell([bool]$on) {
 
 # GlazeWM at sign-in: a logon task, not the Run key. Explorer runs Run entries one after another,
 # only after RunOnce and an idle wait: GlazeWM came ~100 s after the desktop. As the shell,
-# mw4w-shell starts GlazeWM itself: the task is off then.
+# mw4w-shell starts GlazeWM itself, but the task stays on as the fallback: an antivirus can block
+# mw4w-shell (or reset the Shell entry to Explorer), and then nothing else would start GlazeWM.
 # The task runs glaze-start: GlazeWM started that early can crash (0xc0000409) before the desktop
 # is up, so it tries again, like mw4w-shell does. Start-Process ShellExecutes: GlazeWM is uiAccess,
 # which CreateProcess refuses (error 740).
 function Start-GlazeAtLogon {
   $exe = Join-Path $env:ProgramFiles 'glzr.io\GlazeWM\glazewm.exe'
+  if ((Get-ItemProperty $WinlogonKey -ErrorAction SilentlyContinue).Shell -like '*mw4w-shell*') {
+    # give Winlogon time to start mw4w-shell; when it runs, GlazeWM is its job
+    for ($i = 0; $i -lt 15 -and -not (Get-Process mw4w-shell, glazewm -ErrorAction SilentlyContinue); $i++) { Start-Sleep 1 }
+    if (Get-Process mw4w-shell -ErrorAction SilentlyContinue) { return }
+  }
   for ($i = 0; $i -lt 10 -and -not (Get-Process glazewm -ErrorAction SilentlyContinue); $i++) {
     Start-Process $exe -WorkingDirectory (Split-Path $exe)
     Start-Sleep 5
@@ -805,9 +811,8 @@ function Start-GlazeAtLogon {
 function Sync-Autostart {
   $run = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
   $exe = Join-Path $env:ProgramFiles 'glzr.io\GlazeWM\glazewm.exe'
-  $asShell = (Get-ItemProperty $WinlogonKey -ErrorAction SilentlyContinue).Shell -like '*mw4w-shell*'
   try {
-    $set = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit 0 -Priority 4 -Disable:$asShell
+    $set = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit 0 -Priority 4
     Register-ScheduledTask 'MW4W-GlazeWM' -Force -Settings $set `
       -Action (New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$Script`" glaze-start") `
       -Trigger (New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME") | Out-Null

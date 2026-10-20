@@ -89,6 +89,7 @@ var (
 	redrawWake   = make(chan struct{}, 1)
 	curThread    = syscall.NewLazyDLL("kernel32.dll").NewProc("GetCurrentThreadId")
 	winDown      bool
+	winNative    bool // a "native" SUPER combo went to Windows while SUPER was held
 	blocked      [256]bool // keydowns blockedKey ate: their keyups go too
 	hideTaskbar  bool
 )
@@ -130,18 +131,39 @@ func mask() {
 	sendInput.Call(2, uintptr(unsafe.Pointer(&in[0])), unsafe.Sizeof(in[0]))
 }
 
+// superDown re-checks winDown against the real key state: a SUPER keyup on the
+// secure desktop (Win+L lock screen, UAC, Ctrl+Alt+Del) never reaches the hook,
+// and a stuck winDown turns every click into a SUPER drag and eats typing.
+func superDown() bool {
+	held := func(k uintptr) bool { r, _, _ := keyState.Call(k); return r&0x8000 != 0 }
+	if winDown && !held(vkLWin) && !held(vkRWin) {
+		winDown, winNative = false, false
+	}
+	return winDown
+}
+
 func hook(code int, wparam uintptr, lparam uintptr) uintptr {
 	if code == 0 {
 		k := (*kbdllhookstruct)(unsafe.Pointer(lparam))
 		isWin := k.vkCode == vkLWin || k.vkCode == vkRWin
 		down := wparam == wmKeyDown || wparam == wmSysKeyDown
 		up := wparam == wmKeyUp || wparam == wmSysKeyUp
+		if !isWin {
+			superDown()
+		}
+		if !isWin && down && winDown && nativeKey(k.vkCode) {
+			winNative = true
+		}
 		switch {
 		case isWin && down:
 			winDown = true
 		case isWin && up:
-			mask()
-			winDown = false
+			// Windows saw a native combo, so Start stays shut; the mask key would
+			// close the flyout it opened (Win+V clipboard, Win+. emoji)
+			if !winNative {
+				mask()
+			}
+			winDown, winNative = false, false
 		case k.vkCode == vkTab && down && k.flags&llkhfAltDown != 0 && !winDown:
 			return 1 // ALT+Tab does nothing, like on Hyprland
 		case !isWin && (down || up) && workspaceKey(k.vkCode, down):
