@@ -28,16 +28,19 @@ func TestResizeEdgesFloating(t *testing.T) {
 	}
 }
 
-func TestWind(t *testing.T) {
-	if math.Abs(wind(0)) > 1e-6 || math.Abs(wind(1)-1) > 1e-6 {
-		t.Fatal("wind must run 0 -> 1")
+func TestEase(t *testing.T) {
+	if math.Abs(ease(0)) > 1e-6 || math.Abs(ease(1)-1) > 1e-6 {
+		t.Fatal("ease must run 0 -> 1")
 	}
 	peak := 0.0
 	for i := 0; i <= 100; i++ {
-		peak = math.Max(peak, wind(float64(i)/100))
+		peak = math.Max(peak, ease(float64(i)/100))
 	}
 	if peak > 1+1e-6 { // no overshoot: the windows stop at their place, no settle back
 		t.Fatalf("overshoot %v", peak)
+	}
+	if p := ease(16.0 / slideMs); p > 0.2 { // one 60 Hz frame moves a step, not a jump
+		t.Fatalf("first frame %v", p)
 	}
 }
 

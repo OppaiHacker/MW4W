@@ -12,6 +12,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -446,7 +447,7 @@ func slide(cmds []string) {
 		if t > 1 {
 			t = 1
 		}
-		p := wind(t)
+		p := ease(t)
 		place(old, int32(-float64(dir*w)*p))
 		place(cur, int32(float64(dir*w)*(1-p)))
 		dwmFlush.Call() // one frame per vblank
@@ -622,19 +623,11 @@ func unregister(ts []thumb) {
 	}
 }
 
-// wind is ML4W's "bezier = wind, 0.05, 0.9, 0.1, 1.05" at time t, minus the 1.05:
-// that overshoot slid the windows past their place and back, a settle after the slide.
-func wind(t float64) float64 {
-	bez := func(s, p1, p2 float64) float64 { return 3*(1-s)*(1-s)*s*p1 + 3*(1-s)*s*s*p2 + s*s*s }
-	lo, hi := 0.0, 1.0
-	for i := 0; i < 30; i++ { // x(s) is monotonic: bisect for s
-		if m := (lo + hi) / 2; bez(m, 0.05, 0.1) < t {
-			lo = m
-		} else {
-			hi = m
-		}
-	}
-	return bez((lo+hi)/2, 0.9, 1)
+// ease is OutQuint, the dock's easing, at time t. ML4W's "wind" bezier
+// (0.05, 0.9, 0.1, 1.05) put 40% of the slide into the first 60 Hz frame:
+// the windows jumped instead of sliding.
+func ease(t float64) float64 {
+	return 1 - math.Pow(1-t, 5)
 }
 
 // background is the wallpaper behind the overlay, cached per monitor rect until the wallpaper changes.
