@@ -87,6 +87,8 @@ var (
 	shellWindow  = user32.NewProc("GetShellWindow")
 	showAsync    = user32.NewProc("ShowWindowAsync")
 	dpiAware     = user32.NewProc("SetProcessDpiAwarenessContext")
+	dpiOfWindow  = user32.NewProc("GetDpiForWindow")
+	dpiOfMonitor = syscall.NewLazyDLL("shcore.dll").NewProc("GetDpiForMonitor")
 	getLong      = user32.NewProc("GetWindowLongPtrW")
 	setLong      = user32.NewProc("SetWindowLongPtrW")
 	redrawWake   = make(chan struct{}, 1)

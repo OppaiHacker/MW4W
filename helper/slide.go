@@ -76,10 +76,8 @@ var (
 	listed   []uintptr  // enumWindows output
 	ipc      *glaze     // slider thread only: one GlazeWM connection for all slides
 	listCB   = syscall.NewCallback(listWindow)
-	bgCache  struct {
-		dc, bmp uintptr
-		key     string
-	}
+	bgCache  = map[string][2]uintptr{} // overlay rect -> wallpaper DC and bitmap, one per monitor
+	bgWall   string                    // wallpaper (path and time) the cache holds
 )
 
 type combo struct {
@@ -403,7 +401,11 @@ func slide(cmds []string) {
 	}
 	for _, c := range cmds {
 		if n, ok := strings.CutPrefix(c, "focus --workspace "); ok && shown[n] {
-			run()
+			if on != from.mon && strings.HasPrefix(cmds[0], "move --workspace ") {
+				moveAcross(on, run)
+			} else {
+				run()
+			}
 			return
 		}
 	}
@@ -429,15 +431,15 @@ func slide(cmds []string) {
 	if to.Name == "" || to.Name == from.Name || shown[to.Name] || to.mon != on {
 		return
 	}
-	cur := thumbs(ov) // the old windows are cloaked now, so these are the new ones
-	defer unregister(cur)
-
 	dir := int32(1) // higher workspace comes in from the right
 	a, errA := strconv.Atoi(from.Name)
 	b, errB := strconv.Atoi(to.Name)
 	if errA == nil && errB == nil && b < a || (errA != nil || errB != nil) && to.Name < from.Name {
 		dir = -1
 	}
+	cur := thumbs(ov) // the old windows are cloaked now, so these are the new ones
+	defer unregister(cur)
+	place(cur, dir*w) // off the overlay before DWM draws a frame of them in place
 	start := time.Now()
 	for {
 		t := float64(time.Since(start).Milliseconds()) / slideMs
@@ -452,6 +454,46 @@ func slide(cmds []string) {
 		// t == 1, or the next switch is already waiting: like Hyprland, never queue slides behind each other
 		if r, _, _ := peekMessage.Call(uintptr(unsafe.Pointer(&m[0])), slideWin, wmApp, wmApp, 0); t == 1 || r != 0 {
 			return
+		}
+	}
+}
+
+// moveAcross runs a window move to monitor on. One that changes DPI on the
+// way draws at the old scale, gets resized and lays itself out again over a
+// few frames: monitor on stays frozen under the overlay until it settles.
+func moveAcross(on rect, run func()) {
+	fg, _, _ := getFg.Call()
+	var x, y uint32
+	mon, _, _ := monitorAt.Call(uintptr(uint32((on.l+on.r)/2))|uintptr((on.t+on.b)/2)<<32, 2)
+	dpiOfMonitor.Call(mon, 0, uintptr(unsafe.Pointer(&x)), uintptr(unsafe.Pointer(&y))) // MDT_EFFECTIVE_DPI
+	if d, _, _ := dpiOfWindow.Call(fg); uint32(d) == x || !overlayMu.TryLock() {
+		run()
+		return
+	}
+	defer overlayMu.Unlock()
+	// a still copy of the screen: live thumbnails would show the neighbours being resized
+	ov := overlayRect(on)
+	scr, _, _ := getDC.Call(0)
+	dc, _, _ := newDC.Call(scr)
+	bmp, _, _ := newBitmap.Call(scr, uintptr(ov.r-ov.l), uintptr(ov.b-ov.t))
+	selectObject.Call(dc, bmp)
+	bitBlt.Call(dc, 0, 0, uintptr(ov.r-ov.l), uintptr(ov.b-ov.t), scr, uintptr(ov.l), uintptr(ov.t), srcCopy)
+	releaseDC.Call(0, scr)
+	paintOverlay(ov, dc)
+	deleteDC.Call(dc)
+	deleteObject.Call(bmp)
+	defer hideOverlay()
+	run()
+	// ponytail: settled = same rect 3 frames running, 30 frames at most
+	var last rect
+	for i, still := 0, 0; i < 30 && still < 3; i++ {
+		dwmFlush.Call()
+		var r rect
+		windowRect.Call(fg, uintptr(unsafe.Pointer(&r)))
+		if r == last {
+			still++
+		} else {
+			still, last = 0, r
 		}
 	}
 }
@@ -495,14 +537,20 @@ var overlayMu sync.Mutex
 // showOverlay covers ov with the wallpaper, under the thumbnails already
 // placed: shown fully transparent, painted, then made opaque, so never a blank frame.
 func showOverlay(ov rect) {
-	w, ht := uintptr(ov.r-ov.l), uintptr(ov.b-ov.t)
 	scr, _, _ := getDC.Call(0)
 	bg := background(ov, scr)
 	releaseDC.Call(0, scr)
+	paintOverlay(ov, bg)
+}
+
+// paintOverlay shows the overlay over ov painted with dc.
+func paintOverlay(ov rect, dc uintptr) {
+	w, ht := uintptr(ov.r-ov.l), uintptr(ov.b-ov.t)
 	setPos.Call(slideWin, ^uintptr(0), uintptr(ov.l), uintptr(ov.t), w, ht, swpShow) // HWND_TOPMOST
 	win, _, _ := getDC.Call(slideWin)
-	bitBlt.Call(win, 0, 0, w, ht, bg, 0, 0, srcCopy)
+	bitBlt.Call(win, 0, 0, w, ht, dc, 0, 0, srcCopy)
 	releaseDC.Call(slideWin, win)
+	dwmFlush.Call() // the new picture is composed before it turns opaque: else one frame shows the last one
 	setLayered.Call(slideWin, 0, 255, lwaAlpha)
 	dwmFlush.Call()
 }
@@ -589,29 +637,35 @@ func wind(t float64) float64 {
 	return bez((lo+hi)/2, 0.9, 1)
 }
 
-// background is the wallpaper behind the overlay, cached per wallpaper and rect.
+// background is the wallpaper behind the overlay, cached per monitor rect until the wallpaper changes.
 func background(ov rect, scr uintptr) uintptr {
 	var wp [260]uint16
 	sysParams.Call(0x73, uintptr(len(wp)), uintptr(unsafe.Pointer(&wp[0])), 0) // SPI_GETDESKWALLPAPER
-	key := syscall.UTF16ToString(wp[:])
-	if fi, err := os.Stat(key); err == nil {
-		key += fi.ModTime().String()
+	wall := syscall.UTF16ToString(wp[:])
+	if fi, err := os.Stat(wall); err == nil {
+		wall += fi.ModTime().String()
 	}
-	key += strconv.Itoa(int(ov.l)) + "," + strconv.Itoa(int(ov.t)) + "," + strconv.Itoa(int(ov.r)) + "," + strconv.Itoa(int(ov.b))
-	if bgCache.key != key {
-		if bgCache.dc != 0 {
-			deleteDC.Call(bgCache.dc)
-			deleteObject.Call(bgCache.bmp)
+	if wall != bgWall {
+		for k, c := range bgCache {
+			deleteDC.Call(c[0])
+			deleteObject.Call(c[1])
+			delete(bgCache, k)
 		}
-		dc, _, _ := newDC.Call(scr)
-		bmp, _, _ := newBitmap.Call(scr, uintptr(ov.r-ov.l), uintptr(ov.b-ov.t))
-		selectObject.Call(dc, bmp)
-		viewportOrg.Call(dc, uintptr(-ov.l), uintptr(-ov.t), 0) // PaintDesktop draws in screen coordinates
-		paintDesktop.Call(dc)
-		viewportOrg.Call(dc, 0, 0, 0)
-		bgCache.dc, bgCache.bmp, bgCache.key = dc, bmp, key
+		bgWall = wall
 	}
-	return bgCache.dc
+	// ponytail: rects of monitors that went away stay cached until the next wallpaper change
+	key := strconv.Itoa(int(ov.l)) + "," + strconv.Itoa(int(ov.t)) + "," + strconv.Itoa(int(ov.r)) + "," + strconv.Itoa(int(ov.b))
+	if c, ok := bgCache[key]; ok {
+		return c[0]
+	}
+	dc, _, _ := newDC.Call(scr)
+	bmp, _, _ := newBitmap.Call(scr, uintptr(ov.r-ov.l), uintptr(ov.b-ov.t))
+	selectObject.Call(dc, bmp)
+	viewportOrg.Call(dc, uintptr(-ov.l), uintptr(-ov.t), 0) // PaintDesktop draws in screen coordinates
+	paintDesktop.Call(dc)
+	viewportOrg.Call(dc, 0, 0, 0)
+	bgCache[key] = [2]uintptr{dc, bmp}
+	return dc
 }
 
 // fgMonitor is the foreground window's monitor.
