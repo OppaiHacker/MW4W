@@ -872,6 +872,20 @@ function Get-DisplayPlan {
   foreach ($d in [Mw4w.Displays]::List()) { [ordered]@{ device = $d.Device; mode = $d.Mode; x = $d.X; y = $d.Y; orientation = $d.Orientation; primary = $d.Primary; scale = $d.Scale } }
 }
 
+# GlazeWM 3.10 never uncloaks on wm-exit: windows of hidden workspaces stayed invisible
+# (and unmanaged after a restart). Gather them on the workspace shown on their monitor first.
+function Exit-Glaze {
+  if (-not (Test-Glaze)) { return }
+  $wins = { param($c) if ($c.type -eq 'window') { $c } else { foreach ($x in $c.children) { & $wins $x } } }
+  foreach ($m in (Glaze-Ipc 'query monitors').data.monitors) {
+    $shown = @($m.children | Where-Object isDisplayed)[0].name
+    foreach ($ws in $m.children | Where-Object { -not $_.isDisplayed }) {
+      foreach ($w in & $wins $ws) { Glaze '--id', $w.id, 'move', '--workspace', $shown }
+    }
+  }
+  Glaze 'wm-exit'
+}
+
 # GlazeWM applies bind_to_monitor only to workspaces it creates: move the existing ones over
 function Move-BoundWorkspaces {
   $binds = (Get-Settings).monitorWorkspaces
@@ -972,6 +986,9 @@ function Invoke-Mw4w([string]$Cmd, [string]$Arg) {
     'kill-active' { if ($Arg) { Kill-Active ([long]$Arg) } else { Kill-Active } }  # arg: hwnd (default foreground)
     'empty-workspace' { Empty-Workspace }
     'gamemode' { $st = Get-State; $st.gamemode = -not $st.gamemode; Save-State $st; Update-Glaze }
+    'wm-exit' { Exit-Glaze }
+    # winmask, after monitors changed: bind_to_monitor indexes shift, and a re-plugged monitor gets its workspaces back
+    'displays-changed' { if ((Get-Settings).monitorWorkspaces) { Update-Glaze; Move-BoundWorkspaces } }
     'bar-restart' { Bar-Restart }
     'bar-toggle' { Bar-Toggle }
     'set' { Set-Settings $Arg }

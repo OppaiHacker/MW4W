@@ -159,6 +159,8 @@ Remove-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' 'ML4W-
 
 if (-not $NoStart) {
   Step 'Starting'
+  # GlazeWM inherits this PATH: without winget's fresh entries its "shell-exec zebar" freezes it behind an error dialog
+  $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
   if (Get-Process glazewm -ErrorAction SilentlyContinue) {
     & powershell -NoProfile -ExecutionPolicy Bypass -File $mw4w bar-restart
     & (Join-Path $env:ProgramFiles 'glzr.io\GlazeWM\cli\glazewm.exe') command wm-reload-config | Out-Null

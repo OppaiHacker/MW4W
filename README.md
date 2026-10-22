@@ -90,6 +90,15 @@ own volume (its Core Audio session, falling back to the system volume like Media
 in `cache/media.json`. The liquid glass is CSS (blurred cover, specular rim) instead of the GLSL shader: WebView2 widgets can't see the desktop behind them.
 Turn it off with *Media player module* in settings.
 
+## Multiple monitors
+
+Every monitor gets its own bar and dock. A bar marks the workspace shown on its monitor (filled while that monitor
+has the focus) and shows the title of that monitor's window. Clicking a workspace on a bar opens a new one on that
+bar's monitor, and clicking a monitor's empty desktop focuses it, so SUPER+Enter or SUPER+6 land there, like Hyprland.
+Popups (launcher, settings, power menu, ...) open on the monitor under the cursor, quick panels and the island under their
+icon, at that monitor's scale. *Displays* (SUPER+CTRL+M) binds workspaces to monitors. Tested with 2 and 3 monitors at
+mixed scaling (100% + 175%), including plugging one in and out.
+
 ## MW4W instead of Explorer
 
 *Settings → System → MW4W as the Windows shell* (or `MW4W-Setup.exe -ReplaceExplorer`, or `mw4w.ps1 shell on`)

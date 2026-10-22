@@ -49,6 +49,7 @@ var (
 	notify      = user32.NewProc("NotifyWinEvent")
 	monitorOf   = user32.NewProc("MonitorFromWindow")
 	monitorInfo = user32.NewProc("GetMonitorInfoW")
+	setCursor   = user32.NewProc("SetCursorPos")
 
 	// hook thread only
 	drag   uintptr
@@ -134,10 +135,37 @@ func mouseHook(code int, wparam uintptr, lparam uintptr) uintptr {
 				*j = dragJob{win: h, resize: resize, start: [2]int32{m.x, m.y}, pt: [2]int32{m.x, m.y}, begin: true}
 			})
 			return 1
+		case drag == 0 && wparam == wmLButtonDown:
+			x, y := m.x, m.y
+			act(func() { focusDesktopAt(x, y) })
 		}
 	}
 	r, _, _ := callNext.Call(0, uintptr(code), wparam, lparam)
 	return r
+}
+
+// focusDesktopAt: a click on a monitor's empty desktop focuses that monitor's
+// workspace, like Hyprland: GlazeWM only focuses windows, so new windows and
+// workspaces kept opening on the monitor focused before.
+func focusDesktopAt(x, y int32) {
+	h, _, _ := fromPoint.Call(uintptr(uint32(x)) | uintptr(uint32(y))<<32)
+	h, _, _ = ancestor.Call(h, 2) // GA_ROOT
+	if c := className(h); c != "Progman" && c != "WorkerW" {
+		return
+	}
+	g, err := dialGlaze()
+	if err != nil {
+		return
+	}
+	defer g.c.Close()
+	ws, _ := workspaces(g)
+	for _, w := range ws {
+		if w.IsDisplayed && !w.HasFocus && x >= w.mon.l && x < w.mon.r && y >= w.mon.t && y < w.mon.b {
+			g.ask("command focus --workspace " + w.Name)
+			setCursor.Call(uintptr(x), uintptr(y)) // undo GlazeWM's cursor jump to the monitor's center
+			return
+		}
+	}
 }
 
 // dragger applies the newest cursor position at most every 5ms.

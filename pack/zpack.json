@@ -355,7 +355,7 @@
     {
       "name": "settings",
       "htmlPath": "./settings.html",
-      "zOrder": "normal",
+      "zOrder": "top_most",
       "shownInTaskbar": false,
       "focused": true,
       "resizable": false,
@@ -417,7 +417,7 @@
     {
       "name": "displays",
       "htmlPath": "./displays.html",
-      "zOrder": "normal",
+      "zOrder": "top_most",
       "shownInTaskbar": false,
       "focused": true,
       "resizable": false,

@@ -10,6 +10,9 @@ if ((Get-ItemProperty $wl -ErrorAction SilentlyContinue).Shell -like '*mw4w-shel
 
 # GlazeWM runs elevated (Stop-Process gets access denied), so ask it to exit.
 $cli = Join-Path $env:ProgramFiles 'glzr.io\GlazeWM\cli\glazewm.exe'
+# mw4w.ps1 wm-exit first brings windows of hidden workspaces back (GlazeWM leaves them cloaked)
+$mw4w = Join-Path $Pack 'scripts\mw4w.ps1'
+if ((Get-Process glazewm -ErrorAction SilentlyContinue) -and (Test-Path $mw4w)) { & powershell -NoProfile -ExecutionPolicy Bypass -File $mw4w wm-exit; Start-Sleep -Seconds 2 }
 if (Get-Process glazewm -ErrorAction SilentlyContinue) { & $cli command wm-exit | Out-Null; Start-Sleep -Seconds 2 }
 # winmask --exit shows the hidden taskbar again (GlazeWM's shutdown_commands do the same).
 $wm = Join-Path $Pack 'bin\winmask.exe'

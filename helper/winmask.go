@@ -72,6 +72,8 @@ var (
 	getMessage   = user32.NewProc("GetMessageW")
 	dispatch     = user32.NewProc("DispatchMessageW")
 	sendInput    = user32.NewProc("SendInput")
+	cursorPos    = user32.NewProc("GetCursorPos")
+	monitorAt    = user32.NewProc("MonitorFromPoint")
 	winEventHook = user32.NewProc("SetWinEventHook")
 	getText      = user32.NewProc("InternalGetWindowText") // never sends messages, so a hung app can't stall us
 	getFg        = user32.NewProc("GetForegroundWindow")
@@ -82,6 +84,7 @@ var (
 	getClass     = user32.NewProc("GetClassNameW")
 	showWindow   = user32.NewProc("ShowWindow")
 	findWindowEx = user32.NewProc("FindWindowExW")
+	shellWindow  = user32.NewProc("GetShellWindow")
 	showAsync    = user32.NewProc("ShowWindowAsync")
 	dpiAware     = user32.NewProc("SetProcessDpiAwarenessContext")
 	getLong      = user32.NewProc("GetWindowLongPtrW")
@@ -89,7 +92,7 @@ var (
 	redrawWake   = make(chan struct{}, 1)
 	curThread    = syscall.NewLazyDLL("kernel32.dll").NewProc("GetCurrentThreadId")
 	winDown      bool
-	winNative    bool // a "native" SUPER combo went to Windows while SUPER was held
+	winNative    bool      // a "native" SUPER combo went to Windows while SUPER was held
 	blocked      [256]bool // keydowns blockedKey ate: their keyups go too
 	hideTaskbar  bool
 )
@@ -111,13 +114,25 @@ func setTaskbars(show bool) {
 	if show {
 		cmd = 8
 	}
+	// only Explorer's: Zebar's systray registers a hidden "Shell_TrayWnd" too, shown it's a blank window
+	var shell, pid uint32
+	sw, _, _ := shellWindow.Call()
+	threadOf.Call(sw, uintptr(unsafe.Pointer(&shell)))
+	// collect first: showing a taskbar changes the z-order, and with two secondary
+	// taskbars (3 monitors) FindWindowEx kept handing back the same ones forever
+	seen := map[uintptr]bool{}
 	for _, c := range []string{"Shell_TrayWnd", "Shell_SecondaryTrayWnd"} {
 		cls, _ := syscall.UTF16PtrFromString(c)
 		for h := uintptr(0); ; {
 			h, _, _ = findWindowEx.Call(0, h, uintptr(unsafe.Pointer(cls)), 0)
-			if h == 0 {
+			if h == 0 || seen[h] {
 				break
 			}
+			seen[h] = true
+		}
+	}
+	for h := range seen {
+		if threadOf.Call(h, uintptr(unsafe.Pointer(&pid))); pid == shell {
 			showWindow.Call(h, cmd)
 		}
 	}
@@ -254,8 +269,49 @@ func onShow(_, _, hwnd, idObject, _, _, _ uintptr) uintptr {
 	if !strings.HasPrefix(t, "Zebar - mw4w / ") || t == "Zebar - mw4w / bar" || t == "Zebar - mw4w / dock" {
 		return 0
 	}
+	placePopup(hwnd)
 	focusWindow(hwnd)
 	return 0
+}
+
+// placePopup moves a popup to the monitor the cursor is on (Zebar presets pin them to the
+// primary) and fits it between that monitor's bar and dock (a 720px settings page at 175%
+// is taller than a 1440px monitor's free space; the pages scroll).
+func placePopup(h uintptr) {
+	t := title(h)
+	if t == "Zebar - mw4w / quick" || t == "Zebar - mw4w / island" {
+		return // the bar positions these itself
+	}
+	var pt struct{ x, y int32 }
+	cursorPos.Call(uintptr(unsafe.Pointer(&pt)))
+	to, _, _ := monitorAt.Call(uintptr(uint32(pt.x))|uintptr(pt.y)<<32, 2) // MONITOR_DEFAULTTONEAREST
+	if to == 0 {
+		return
+	}
+	mon, _ := monitorRects(to)
+	cur, _, _ := monitorOf.Call(h, 2)
+	if t == "Zebar - mw4w / power" { // full-monitor overlay
+		if cur != to {
+			setPos.Call(h, 0, uintptr(mon.l), uintptr(mon.t), uintptr(mon.r-mon.l), uintptr(mon.b-mon.t), 0x4|0x10)
+		}
+		return
+	}
+	free := overlayRect(mon)
+	for i := 0; i < 2; i++ { // a DPI change after the first move may resize the window
+		var r rect
+		windowRect.Call(h, uintptr(unsafe.Pointer(&r)))
+		w, ht := r.r-r.l, min(r.b-r.t, free.b-free.t)
+		if cur == to && r.t >= free.t && r.b <= free.b {
+			return // fits where Zebar put it
+		}
+		x := mon.l + (mon.r-mon.l-w)/2
+		y := free.t + (free.b-free.t-ht)/2
+		if x == r.l && y == r.t && ht == r.b-r.t {
+			return
+		}
+		setPos.Call(h, 0, uintptr(x), uintptr(y), uintptr(w), uintptr(ht), 0x4|0x10) // NOZORDER|NOACTIVATE
+		cur = to
+	}
 }
 
 func focusWindow(h uintptr) {
@@ -301,6 +357,7 @@ func togglePopup(h uintptr) {
 		showWindow.Call(h, 0) // the page sees the blur and resets itself
 		return
 	}
+	placePopup(h)
 	showWindow.Call(h, 5) // SW_SHOW
 	focusWindow(h)
 }

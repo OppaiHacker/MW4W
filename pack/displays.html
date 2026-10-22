@@ -261,7 +261,7 @@
     </div>
 
     <script type="module">
-      import { send, b64, json, open, popup, esc } from './lib/mw4w.js';
+      import { zebar, send, b64, json, open, popup, esc } from './lib/mw4w.js';
 
       const close = popup({ blur: false });
       const $ = id => document.getElementById(id);
@@ -446,6 +446,13 @@
       }
 
       document.addEventListener('visibilitychange', () => !document.hidden && load());
+      // a display plugged in or out while open: the list here would be stale (and Apply would use it)
+      let monitors;
+      zebar.createProvider({ type: 'glazewm' }).onOutput(o => {
+        const key = o.allMonitors?.map(m => `${m.deviceName} ${m.width}x${m.height} ${m.x},${m.y}`).join('|');
+        if (monitors !== undefined && key !== monitors && !document.hidden) load();
+        monitors = key;
+      });
       addEventListener('resize', () => list.length && render());
       load();
     </script>

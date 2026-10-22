@@ -40,6 +40,8 @@ var (
 
 	registerClass = user32.NewProc("RegisterClassExW")
 	createWindow  = user32.NewProc("CreateWindowExW")
+	setTimer      = user32.NewProc("SetTimer")
+	killTimer     = user32.NewProc("KillTimer")
 	defWindowProc = user32.NewProc("DefWindowProcW")
 	postMessage   = user32.NewProc("PostMessageW")
 	getDC         = user32.NewProc("GetDC")
@@ -196,6 +198,7 @@ func workspaceKey(vk uint32, down bool) bool {
 	if !down {
 		if vk == wsHeld {
 			wsHeld = 0
+			return true // its keydown was taken: a lone keyup let Win+Alt+G open the Game Bar
 		}
 		return false
 	}
@@ -272,6 +275,13 @@ func slideProc(h, msg, wp, lp uintptr) uintptr {
 		return 0
 	case wmApp + 2:
 		slide(clicked)
+		return 0
+	case 0x007E: // WM_DISPLAYCHANGE: a monitor came or went (one per step of a re-plug: wait for the last)
+		setTimer.Call(h, 1, 3000, 0)
+		return 0
+	case 0x0113: // WM_TIMER
+		killTimer.Call(h, 1)
+		toWorker("displays-changed") // workspaces bound to a monitor go back to it
 		return 0
 	case 0x004A: // WM_COPYDATA from "winmask --mw4w"
 		cd := (*copyData)(unsafe.Pointer(lp))
@@ -614,24 +624,27 @@ func fgMonitor() rect {
 
 // overlayRect is monitor ov between the bar and the dock, so both stay put.
 func overlayRect(ov rect) rect {
-	if r, ok := zebarRect("bar"); ok && r.b > ov.t && r.t <= ov.t && r.b < ov.b {
+	if r, ok := zebarRect("bar", ov); ok && r.b > ov.t && r.t <= ov.t && r.b < ov.b {
 		ov.t = r.b
 	}
-	if r, ok := zebarRect("dock"); ok && r.t < ov.b && r.b >= ov.b && r.t > ov.t {
+	if r, ok := zebarRect("dock", ov); ok && r.t < ov.b && r.b >= ov.b && r.t > ov.t {
 		ov.b = r.t
 	}
 	return ov
 }
 
-// ponytail: FindWindow takes the first match, so with the bar on several monitors only one is checked
-func zebarRect(widget string) (r rect, ok bool) {
+// zebarRect is the visible widget window on monitor mon: each monitor has its own bar and dock.
+func zebarRect(widget string, mon rect) (r rect, ok bool) {
 	t, _ := syscall.UTF16PtrFromString("Zebar - mw4w / " + widget)
-	h, _, _ := findWindow.Call(0, uintptr(unsafe.Pointer(t)))
-	if h == 0 || !visible(h) {
-		return r, false
+	for h := uintptr(0); ; {
+		if h, _, _ = findWindowEx.Call(0, h, 0, uintptr(unsafe.Pointer(t))); h == 0 {
+			return r, false
+		}
+		windowRect.Call(h, uintptr(unsafe.Pointer(&r)))
+		if cx := (r.l + r.r) / 2; visible(h) && cx >= mon.l && cx < mon.r {
+			return r, true
+		}
 	}
-	windowRect.Call(h, uintptr(unsafe.Pointer(&r)))
-	return r, true
 }
 
 func visible(h uintptr) bool {

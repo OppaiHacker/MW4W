@@ -110,10 +110,12 @@ export function popup({ blur = true, onHide } = {}) {
       document.documentElement.classList.remove('preload');
     })();
   const close = async () => {
+    // read before hiding: Windows hands the foreground to whatever is next in z-order (the bar, or
+    // a window on another monitor, which GlazeWM then focuses): give it back to what had it
+    const f = (await glazeOut()).focusedContainer;
     if (await hide()) {
-      // Windows hands the foreground to whatever is next (often the bar): give it back to GlazeWM's window
-      const f = (await glazeOut()).focusedContainer;
       if (f?.type === 'window') await glaze(`focus --container-id ${f.id}`);
+      else if (f?.type === 'workspace') await glaze(`focus --workspace ${f.name}`); // empty workspace
     }
     onHide?.();
   };

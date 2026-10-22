@@ -85,6 +85,6 @@
   { "group": "Actions", "keys": ["lwin+alt+g"], "desc": "Game mode (no gaps / borders)", "cmd": ["@mw4w gamemode"] },
   { "group": "Actions", "keys": ["lwin+shift+r"], "desc": "Reload config", "cmd": ["@mw4w apply"] },
   { "group": "Actions", "keys": ["lwin+shift+p"], "desc": "Pause / resume tiling", "cmd": ["wm-toggle-pause"] },
-  { "group": "Actions", "keys": ["lwin+control+shift+e"], "desc": "Exit window manager", "cmd": ["wm-exit"] },
+  { "group": "Actions", "keys": ["lwin+control+shift+e"], "desc": "Exit window manager", "cmd": ["@mw4w wm-exit"] },
   { "group": "Actions", "keys": ["lwin+l"], "desc": "Lock (Windows)", "native": true }
 ]

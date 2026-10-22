@@ -87,7 +87,7 @@
         display: grid;
         place-items: center;
         font: 700 12px/1 'Fira Sans', 'Segoe UI Variable Display', 'Segoe UI', sans-serif;
-        color: rgba(var(--text-rgb), 0.38);
+        color: rgba(var(--text-rgb), 0.55);
         border: 1.5px solid rgba(var(--outline-rgb), 0.7);
         transition: all 0.25s ease;
       }
@@ -101,6 +101,11 @@
       .ws button.focus {
         color: var(--onPrimary);
         background: var(--primary);
+        border-color: var(--primary);
+      }
+      .ws button.here:not(.focus) {
+        color: var(--text);
+        background: rgba(var(--primary-rgb), 0.3);
         border-color: var(--primary);
       }
       .ws button:not(.focus):hover {
@@ -344,7 +349,7 @@
         radius: 20,
         bezel: 10,
         strength: 8,
-        tint: 'rgba(var(--surface-rgb), 0.42)',
+        tint: 'rgba(var(--surface-rgb), 0.74)',
       }).setSource(`cache/glass.jpg?v=${Date.now()}`);
       const $ = id => document.getElementById(id);
       let state = {};
@@ -416,7 +421,9 @@
             Array.from({ length: 10 }, (_, i) => {
               const n = String(i + 1);
               const w = g.allWorkspaces.find(w => w.name === n);
-              const cls = [w?.hasFocus && 'focus', w?.isDisplayed && 'shown', w?.children?.length && 'busy'].filter(Boolean).join(' ');
+              // here: shown on this bar's monitor (each monitor has its own bar)
+              const here = w && w.id === g.displayedWorkspace?.id;
+              const cls = [w?.hasFocus && 'focus', here && 'here', w?.isDisplayed && 'shown', w?.children?.length && 'busy'].filter(Boolean).join(' ');
               return `<button class="${cls}" data-ws="${n}">${n}</button>`;
             }).join(''),
           );
@@ -434,7 +441,11 @@
           const tint = t.cover ? `url("${t.cover}")` : '';
           if ($('capTint').style.backgroundImage !== tint) $('capTint').style.backgroundImage = tint;
         }
-        const f = g?.focusedContainer;
+        // this monitor's window: the focused one, or the last focused on the workspace shown here
+        let f = g?.focusedContainer;
+        if (g && g.currentMonitor?.id !== g.focusedMonitor?.id)
+          for (f = g.displayedWorkspace; f && f.type !== 'window'; )
+            f = f.children?.find(c => c.id === f.childFocusOrder?.[0]) ?? f.children?.[0];
         set('title', !t && f?.type === 'window' ? esc(f.title.replace(/ [-—–] [^-—–]+$/, '') || f.processName) : '');
 
         set('clock', `<b>${esc(o.time?.formatted)}</b><small>${esc(o.day?.formatted)}</small>`);
@@ -496,15 +507,13 @@
         const [pos, size, sf] = await Promise.all([win.outerPosition(), win.outerSize(), win.scaleFactor()]);
         const r = $('cap').getBoundingClientRect();
         const W = 440; // island.html window: 420px island + shadow
-        const left = pos.x / sf;
-        const x = Math.round(Math.max(left, Math.min(left + size.width / sf - W, left + r.left + r.width / 2 - W / 2)));
-        const y = Math.round(pos.y / sf + 4);
+        // x, y: bar CSS px. Placed in physical px: a Logical position would be scaled by the
+        // island's current monitor, which differs from the bar's with mixed DPI.
+        const x = Math.round(Math.max(0, Math.min(size.width / sf - W, r.left + r.width / 2 - W / 2)));
+        const y = 4;
         // where the capsule is inside the island window: the island grows out of it
-        localStorage.setItem(
-          'mw4w.island',
-          JSON.stringify({ t: Date.now(), w: r.width, h: r.height, cx: left + r.left + r.width / 2 - x, top: r.top + pos.y / sf - y }),
-        );
-        await island.setPosition({ type: 'Logical', x, y });
+        localStorage.setItem('mw4w.island', JSON.stringify({ t: Date.now(), w: r.width, h: r.height, cx: r.left + r.width / 2 - x, top: r.top - y }));
+        await island.setPosition({ type: 'Physical', x: Math.round(pos.x + x * sf), y: Math.round(pos.y + y * sf) });
         await island.show();
       }
       // ---- quick panels (quick.html) drop down under their icon: sound, network, power, calendar
@@ -518,13 +527,22 @@
         const [pos, size, sf] = await Promise.all([win.outerPosition(), win.outerSize(), win.scaleFactor()]);
         const r = el.getBoundingClientRect();
         const W = 408; // quick.html window: 360px panel + 24px margins (room for its shadow)
-        const left = pos.x / sf;
-        const cx = left + r.left + r.width / 2;
-        const x = Math.round(Math.max(left - 14, Math.min(left + size.width / sf - W + 14, cx - W / 2)));
-        const y = Math.round(pos.y / sf + r.bottom - 2);
+        // x, y: bar CSS px from the monitor's corner (the bar spans it), which is what quick.html's
+        // glass needs; placed in physical px, like the island
+        const cx = r.left + r.width / 2;
+        const x = Math.round(Math.max(-14, Math.min(size.width / sf - W + 14, cx - W / 2)));
+        const y = Math.round(r.bottom - 2);
         localStorage.setItem('mw4w.quick', JSON.stringify({ t: Date.now(), panel, x, y, ox: Math.round(cx - x - 24) }));
-        await q.setPosition({ type: 'Logical', x, y });
+        await q.setPosition({ type: 'Physical', x: Math.round(pos.x + x * sf), y: Math.round(pos.y + y * sf) });
         await q.show();
+      }
+
+      // GlazeWM opens a new workspace on the focused monitor: focus this bar's monitor first, like Hyprland
+      async function focusWs(n) {
+        const g = providers.outputMap.glazewm;
+        const here = g?.displayedWorkspace;
+        if (here && !here.hasFocus && !g.allWorkspaces.some(w => w.name === n)) await glaze(`focus --workspace ${here.name}`);
+        return glaze(`focus --workspace ${n}`);
       }
 
       let hoverTimer;
@@ -535,7 +553,7 @@
         if (e.target.closest('#cap')) return media()?.togglePlayPause();
         const el = e.target.closest('[data-act],[data-ws],[data-tray]');
         if (!el) return;
-        if (el.dataset.ws) return glaze(`focus --workspace ${el.dataset.ws}`);
+        if (el.dataset.ws) return focusWs(el.dataset.ws);
         if (el.dataset.tray) return providers.outputMap.systray?.onLeftClick(el.dataset.tray);
         const o = providers.outputMap;
         switch (el.dataset.act) {
