@@ -8,6 +8,7 @@
 //	mw4w-files.exe --background   start resident without a window (sign-in)
 //	mw4w-files.exe --serve        no windows: print the UI's URL (any OS, development)
 //	mw4w-files.exe --quit         stop the resident process
+//	mw4w-files.exe convert <format> <files...>   convert (formats: convert list <files...>)
 package main
 
 import (
@@ -33,6 +34,10 @@ type serverInfo struct {
 }
 
 func main() {
+	if len(os.Args) > 2 && os.Args[1] == "convert" {
+		attachConsole()
+		os.Exit(cliConvert(os.Args[2:]))
+	}
 	var path string
 	serve, quit, background := false, false, false
 	for _, a := range os.Args[1:] {
@@ -84,7 +89,16 @@ func main() {
 	rand.Read(tok)
 	a.token = hex.EncodeToString(tok)
 	a.port = ln.Addr().(*net.TCPAddr).Port
-	go http.Serve(ln, a.routes())
+	// thumbnails and file bytes (video streams) get their own port: a browser opens at most six
+	// connections per host, and slow thumbnails must never queue the page's API calls behind them
+	lm, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		fatal(err)
+	}
+	a.mport = lm.Addr().(*net.TCPAddr).Port
+	h := a.routes()
+	go http.Serve(ln, h)
+	go http.Serve(lm, h)
 	go a.ix.start()
 
 	if serve {

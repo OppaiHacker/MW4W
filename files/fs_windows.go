@@ -83,7 +83,11 @@ func lowPriority() {
 var instanceMutex windows.Handle
 
 func singleInstance() bool {
-	name, _ := windows.UTF16PtrFromString(`Local\mw4w-files`)
+	n := `Local\mw4w-files`
+	if d := os.Getenv("MW4W_FILES_DATA"); d != "" { // another data folder (tests) is another instance
+		n += "-" + strings.NewReplacer(`\`, "_", ":", "_").Replace(d)
+	}
+	name, _ := windows.UTF16PtrFromString(n)
 	h, err := windows.CreateMutex(nil, true, name)
 	if err == windows.ERROR_ALREADY_EXISTS {
 		windows.CloseHandle(h)
@@ -697,4 +701,16 @@ func bitmapImage(hbm uintptr) (image.Image, error) {
 		}
 	}
 	return img, nil
+}
+
+// attachConsole: the exe is a GUI program; on the command line (convert) it writes to the
+// terminal it was started from.
+func attachConsole() {
+	const attachParent = ^uintptr(0) // ATTACH_PARENT_PROCESS
+	if r, _, _ := kernel32.NewProc("AttachConsole").Call(attachParent); r == 0 {
+		return
+	}
+	if f, err := os.OpenFile("CONOUT$", os.O_WRONLY, 0); err == nil {
+		os.Stdout, os.Stderr = f, f
+	}
 }

@@ -31,6 +31,10 @@ func samePath(a, b string) bool { return filepath.Clean(a) == filepath.Clean(b) 
 
 func allowForeground() {}
 
+func attachConsole() {}
+
+func setDonutKey(string) {}
+
 func singleInstance() bool { return true }
 
 func defaultRoots() []string { return []string{homeDir()} }

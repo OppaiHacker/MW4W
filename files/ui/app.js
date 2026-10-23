@@ -16,6 +16,8 @@ async function api(path, body) {
   return j;
 }
 const op = (o) => api('/api/op', o);
+// thumbnails and file bytes come from the media port (their own connections: never ahead of the API)
+const media = () => (S.init && S.init.media) || '';
 
 // ---------------------------------------------------------------- state
 const S = {
@@ -125,7 +127,7 @@ function iconHTML(it, big) {
     h = `<svg class="t" style="--k:${kindColor[it.kind] || kindColor.file}"><use href="#t-file"/></svg>` + (g ? svgUse(g, 'i g f') : '');
     if (thumbable(it) && (big || it.kind === 'image' || it.kind === 'video' || it.kind === 'exe')) {
       const px = big ? (S.prefs.zoom > 1.2 ? 512 : 256) : 64;
-      h += `<img loading="lazy" decoding="async" draggable="false" class="${it.kind === 'exe' ? 'icon' : 'photo'}" src="/thumb?p=${enc(it.path)}&s=${px}&v=${it.mtime}-${it.size}">`;
+      h += `<img loading="lazy" decoding="async" draggable="false" class="${it.kind === 'exe' ? 'icon' : 'photo'}" src="${media()}/thumb?p=${enc(it.path)}&s=${px}&v=${it.mtime}-${it.size}">`;
     }
   }
   if (it.link) h += svgUse('i-link', 'i link');
@@ -826,7 +828,10 @@ scroller.addEventListener('contextmenu', (e) => {
   }
 });
 
-// ---------------------------------------------------------------- drag & drop (inside the app)
+// ---------------------------------------------------------------- drag & drop
+// Out: in the app window the host runs a shell drag (real files for Explorer, the desktop, browsers,
+// any app); mw4wDragEnd says it's over. In: files from anywhere; the host tells their paths
+// (mw4wDropped), and what has none on disk (a browser's image) is uploaded.
 let dragPaths = null;
 rowsEl.addEventListener('dragstart', (e) => {
   const i = itemAt(e);
@@ -834,19 +839,30 @@ rowsEl.addEventListener('dragstart', (e) => {
   if (!S.sel.has(S.view[i].path)) select(i);
   S.pendingSelect = undefined;
   dragPaths = selected().map((it) => it.path);
+  if (host) {
+    e.preventDefault();
+    send('dragout:' + JSON.stringify(dragPaths));
+    return;
+  }
   e.dataTransfer.effectAllowed = 'copyMove';
   e.dataTransfer.setData('text/plain', dragPaths.join('\n'));
 });
-document.addEventListener('dragend', () => {
+const dragDone = () => {
   dragPaths = null;
   $$('.drop').forEach((x) => x.classList.remove('drop'));
-});
+};
+window.mw4wDragEnd = () => {
+  dragDone();
+  refresh(true);
+};
+document.addEventListener('dragend', dragDone);
+const external = (e) => !dragPaths && e.dataTransfer.types.includes('Files');
 function dropTarget(e) {
   const row = e.target.closest('.row, .cell');
   if (row) {
     const it = S.view[+row.dataset.i];
-    if (it && it.dir && !dragPaths.includes(it.path)) return { el: row, path: it.path };
-    return null;
+    if (it && it.dir && !(dragPaths || []).includes(it.path) && S.mode !== 'trash') return { el: row, path: it.path };
+    if (!external(e)) return null;
   }
   const pl = e.target.closest('.pl[data-p], .crumb[data-p]');
   if (pl && pl.dataset.p) return { el: pl, path: pl.dataset.p };
@@ -854,23 +870,55 @@ function dropTarget(e) {
   return null;
 }
 document.addEventListener('dragover', (e) => {
-  if (!dragPaths) return;
+  if (!dragPaths && !external(e)) return;
   const t = dropTarget(e);
   $$('.drop').forEach((x) => x !== (t && t.el) && x.classList.remove('drop'));
-  if (!t || (!t.el && dragPaths.every((p) => dirName(p) === t.path))) return;
+  if (!t || (dragPaths && !t.el && dragPaths.every((p) => dirName(p) === t.path))) return;
   e.preventDefault();
-  e.dataTransfer.dropEffect = e.ctrlKey ? 'copy' : 'move';
+  // ours: move (Ctrl copies). From elsewhere: copy (Shift moves; the source is told "copy" either
+  // way, so it never deletes its files itself)
+  e.dataTransfer.dropEffect = dragPaths ? (e.ctrlKey ? 'copy' : 'move') : 'copy';
   if (t.el) t.el.classList.add('drop');
 });
+const drops = new Map();
+let dropN = 0;
 document.addEventListener('drop', (e) => {
-  if (!dragPaths) return;
+  if (!dragPaths && !external(e)) return;
   e.preventDefault();
   const t = dropTarget(e);
   const paths = dragPaths;
-  dragPaths = null;
-  $$('.drop').forEach((x) => x.classList.remove('drop'));
-  if (t) transfer(paths, t.path, !e.ctrlKey);
+  dragDone();
+  if (!t) return;
+  if (paths) return transfer(paths, t.path, !e.ctrlKey);
+  const files = [...e.dataTransfer.files];
+  if (!files.length) return;
+  const d = { dest: t.path, move: e.shiftKey, files };
+  if (host && host.postMessageWithAdditionalObjects) {
+    const id = ++dropN;
+    drops.set(id, d);
+    host.postMessageWithAdditionalObjects('drop:' + id, e.dataTransfer.files);
+    // no answer (an old WebView2 runtime): upload them
+    setTimeout(() => drops.has(id) && mw4wDropped(id, []), 1500);
+  } else dropped(d, []);
 });
+window.mw4wDropped = (id, paths) => {
+  const d = drops.get(id);
+  drops.delete(id);
+  if (d) dropped(d, paths);
+};
+async function dropped(d, paths) {
+  const real = paths.filter(Boolean);
+  const rest = d.files.filter((f, i) => !paths[i]);
+  if (real.length) await transfer(real, d.dest, d.move);
+  if (rest.length) {
+    await run(`Saving ${rest.length === 1 ? '“' + rest[0].name + '”' : rest.length + ' files'}…`, async () => {
+      for (const f of rest) {
+        const r = await fetch(`/api/upload?dest=${enc(d.dest)}&name=${enc(f.name)}`, { method: 'POST', body: f });
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText);
+      }
+    });
+  }
+}
 // a folder dragged onto the sidebar's empty part becomes a bookmark
 $('#places').addEventListener('dragover', (e) => {
   if (dragPaths && !e.target.closest('.pl')) e.preventDefault();
@@ -1019,14 +1067,22 @@ async function create(kind) {
   if (!name) return;
   try {
     const r = await op({ op: kind, dest: S.path, name });
-    await refresh(true);
-    const j = S.view.findIndex((x) => x.path === r.path);
-    if (j >= 0) {
+    const pick = () => {
+      const j = S.view.findIndex((x) => x.path === r.path);
+      if (j < 0) return;
       S.sel = new Set([r.path]);
       S.focus = S.anchor = j;
       reveal(j);
       updateClasses();
+    };
+    // on screen at once, whatever the listing that follows takes
+    if (!S.items.some((x) => x.path === r.path)) {
+      const dir = kind === 'mkdir';
+      setItems([...S.items, { name: baseName(r.path), path: r.path, dir, size: 0, mtime: Date.now() / 1000 | 0, kind: dir ? 'dir' : 'file', hidden: false, starred: false }], { keepScroll: true, keepSel: true });
+      pick();
     }
+    await refresh(true);
+    pick();
   } catch (e) {
     toast(e.message, { err: true });
   }
@@ -1113,6 +1169,7 @@ function itemMenu(x, y) {
     ['i-star', items.every((it) => it.starred) ? 'Unstar' : 'Star', () => toggleStar(items, !items.every((it) => it.starred))],
     one && one.dir ? ['i-bm', 'Add to Sidebar', () => setBookmarks([...S.init.bookmarks.map((b) => b.path), one.path])] : null,
     ['i-zip', 'Compress…', compress],
+    ['i-conv', 'Convert To…', () => convertMenu(x, y, items), { kbd: 'Ctrl+.' }],
     isZip ? ['i-unzip', 'Extract Here', () => run('Extracting…', () => op({ op: 'extract', paths: [one.path], dest: dirName(one.path) }))] : null,
     ['i-link', items.length > 1 ? 'Copy Paths' : 'Copy Path', () => copyText(items.map((it) => it.path).join('\n'))],
     '-',
@@ -1122,6 +1179,58 @@ function itemMenu(x, y) {
     ['i-eye', 'Preview', () => quickLook(true), { kbd: 'Space' }],
     one ? ['i-info', 'Properties', () => op({ op: 'props', paths: [one.path] }).catch((e) => toast(e.message, { err: true })), { kbd: 'Alt+Enter' }] : null,
   ]);
+}
+
+// ---------------------------------------------------------------- conversions (the donut's formats, as a menu)
+const convIcons = { img: 'i-img', pdf: 'i-pdf', music: 'i-music', doc: 'i-doc', lines: 'i-lines', code: 'i-code', grid: 'i-lines', zip: 'i-zip', folder: 'i-unzip', play: 'i-play' };
+async function convertMenu(x, y, items = selected()) {
+  if (!items.length || S.mode === 'trash') return;
+  let ts;
+  try {
+    ts = (await api('/api/convert?' + items.map((it) => 'p=' + enc(it.path)).join('&'))).targets;
+  } catch (e) {
+    return toast(e.message, { err: true });
+  }
+  const row = (t) => [convIcons[t.icon] || 'i-conv', t.label + (t.hint ? ` · ${t.hint}` : ''), () => convert(items.map((it) => it.path), t)];
+  menu(x, y, [
+    items.length === 1 ? `Convert “${items[0].name}” to` : `Convert ${items.length} items to`,
+    ...ts.filter((t) => !t.back).map(row),
+    '-',
+    ...ts.filter((t) => t.back).map(row),
+  ]);
+}
+async function convert(paths, t) {
+  let j;
+  try {
+    j = await api('/api/convert', { paths, to: t.id });
+  } catch (e) {
+    return toast(e.message, { err: true });
+  }
+  const tt = toast(`Converting to ${t.label}…`, { spin: true, sticky: true });
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 300));
+    const job = (await api('/api/jobs').catch(() => [])).find((x) => x.id === j.id);
+    if (!job) break;
+    $('span:last-child', tt).textContent = job.total > 1 ? `Converting to ${t.label}… ${job.done}/${job.total}` : `Converting to ${t.label}…`;
+    if (!job.ended) continue;
+    tt.remove();
+    await refresh(true);
+    if (job.errors.length) toast(job.errors.join(' · '), { err: true });
+    if (job.out.length) {
+      const here = job.out.filter((p) => dirName(p) === S.path);
+      toast(job.out.length === 1 ? `Made “${baseName(job.out[0])}”` : `Made ${job.out.length} files`, here.length ? {
+        action: 'Show',
+        onAction: () => {
+          S.sel = new Set(here);
+          S.focus = S.view.findIndex((it) => it.path === here[0]);
+          reveal(S.focus);
+          updateClasses();
+        },
+      } : {});
+    }
+    return;
+  }
+  tt.remove();
 }
 
 function bgMenu(x, y) {
@@ -1192,6 +1301,9 @@ function appMenu() {
     ['i-refresh', 'Rebuild Index', () => api('/api/index', {}).then(() => (toast('Rescanning…'), pollIndex()))],
     ['i-eye', 'Show Hidden Files', () => setPrefs({ hidden: !S.prefs.hidden }), { check: S.prefs.hidden, kbd: 'Ctrl+H' }],
     '-',
+    'Convert donut: hold while dragging files',
+    ...[['ctrl', 'Ctrl'], ['alt', 'Alt'], ['shift', 'Shift'], ['off', 'Off']].map(([k, l]) => [k === 'off' ? 'i-x' : 'i-conv', l, () => setPrefs({ donut: k }), { check: (S.prefs.donut || 'ctrl') === k }]),
+    '-',
     ['i-info', 'Keyboard Shortcuts', shortcuts, { kbd: 'Ctrl+?' }],
     ['i-info', `About MW4W Files ${S.init.version}`, () => toast(`MW4W Files ${S.init.version} · ${$('#ixstat .t').textContent}`)],
   ]);
@@ -1203,6 +1315,7 @@ function shortcuts() {
     ['Alt+← / Alt+→ / Backspace', 'Back / Forward'], ['Alt+↑', 'Parent folder'], ['Alt+Home', 'Home'], ['Enter', 'Open'],
     ['F2', 'Rename'], ['Del / Shift+Del', 'Trash / Delete'], ['Ctrl+C / X / V', 'Copy / Cut / Paste'], ['Ctrl+Shift+N', 'New folder'],
     ['Ctrl+H', 'Hidden files'], ['Ctrl+1 / Ctrl+2', 'List / Grid'], ['Ctrl+ + / -', 'Zoom'], ['Ctrl+N', 'New window'], ['Ctrl+Alt+T', 'Terminal here'],
+    ['Ctrl+.', 'Convert to…'], ['Ctrl + drag files (anywhere)', 'Convert donut · Tab or wheel: more formats'],
   ];
   dialog(`<h2>Keyboard Shortcuts</h2><div class="tbwrap" style="margin:10px 0 16px;max-height:55vh"><table class="tb">${rows.map(([k, d]) => `<tr><td><b>${k}</b></td><td>${d}</td></tr>`).join('')}</table></div><div class="row2"><button class="btn accent" data-r="1">Close</button></div>`);
 }
@@ -1388,7 +1501,8 @@ async function renderPreview(box, it, big) {
     if (pvCache.size > 80) pvCache.delete(pvCache.keys().next().value);
   }
   if (!big && pvFor !== key) return;
-  const raw = `/raw?p=${enc(it.path)}&v=${it.mtime}-${it.size}`;
+  const src = `/raw?p=${enc(it.path)}&v=${it.mtime}-${it.size}`;
+  const raw = media() + src;
   let body = '';
   const meta = [['Type', kindName[p.kind] || (p.lang ? p.lang : 'File')]];
   switch (p.kind) {
@@ -1408,7 +1522,7 @@ async function renderPreview(box, it, big) {
     case 'font': {
       const fam = 'pv' + Math.abs(hash(key));
       if (!document.fonts.check(`12px ${fam}`)) {
-        const ff = new FontFace(fam, `url(${raw})`);
+        const ff = new FontFace(fam, `url(${src})`); // same origin: fonts need CORS across origins
         document.fonts.add(ff);
         ff.load().catch(() => {});
       }
@@ -1604,10 +1718,10 @@ function dialog(html, setup) {
       scroller.focus();
       res(v);
     };
-    box.addEventListener('click', (e) => {
+    box.onclick = (e) => {
       const b = e.target.closest('[data-r]');
       if (b) close(b.dataset.r === '1' ? (setup ? setup.value() : true) : null);
-    });
+    };
     d.onkeydown = (e) => {
       e.stopPropagation();
       if (e.key === 'Escape') close(null);
@@ -1705,6 +1819,11 @@ document.addEventListener('keydown', (e) => {
     n: () => (e.shiftKey ? create('mkdir') : newWindow(S.path)), w: () => send('close') || (host ? 0 : window.close()),
     d: () => S.mode === 'dir' && setBookmarks([...S.init.bookmarks.map((b) => b.path), S.path]), '?': shortcuts,
     t: () => e.altKey && S.mode === 'dir' && op({ op: 'terminal', dest: S.path }),
+    '.': () => {
+      const el = pool.get(S.focus) || pool.get([...pool.keys()].find((i) => S.sel.has(S.view[i] && S.view[i].path)));
+      const r = el ? el.getBoundingClientRect() : scroller.getBoundingClientRect();
+      convertMenu(r.left + 40, r.bottom);
+    },
   };
   let fn = null;
   if (c) fn = ctrlKeys[e.shiftKey && k === 'N' ? 'n' : k.toLowerCase()] || (k === '/' && e.shiftKey ? shortcuts : null);

@@ -115,6 +115,7 @@ func runUI(a *App, path string, show bool) {
 	runtime.LockOSThread()
 	// WebView2 needs a COM single-threaded apartment on the thread that owns the windows
 	windows.CoInitializeEx(0, windows.COINIT_APARTMENTTHREADED|windows.COINIT_DISABLE_OLE1DDE)
+	procOleInitialize.Call(0) // drag and drop (dnd_windows.go)
 	app = a
 	uiThread = windows.GetCurrentThreadId()
 	if v, err := webviewloader.GetInstalledVersion(); err != nil || v == "" {
@@ -158,6 +159,7 @@ func runUI(a *App, path string, show bool) {
 	clipHwnd, _, _ = procCreateWindowExW.Call(0, uintptr(unsafe.Pointer(static)), 0, 0, 0, 0, 0, 0, ^uintptr(2) /* HWND_MESSAGE */, 0, inst, 0)
 
 	a.openWindow = func(p string) { post(func() { openWin(p) }) }
+	startDonut()
 	a.quit = func() { procPostThreadMessageW.Call(uintptr(uiThread), wmQuit, 0, 0) }
 	close(uiReady)
 
@@ -346,6 +348,7 @@ func newWin(query string, visible bool) *win {
 		procDestroyWindow.Call(hwnd)
 		return nil
 	}
+	watchDrops(wn)
 	debug := os.Getenv("MW4W_FILES_DEBUG") != ""
 	if s, err := wv.GetSettings(); err == nil {
 		s.PutAreDefaultContextMenusEnabled(debug)
@@ -386,6 +389,11 @@ func pageCommand(w *win, m string) {
 		procShowWindow.Call(w.hwnd, 6) // SW_MINIMIZE
 	case m == "close":
 		procPostMessageW.Call(w.hwnd, wmClose, 0, 0)
+	case strings.HasPrefix(m, "dragout:"):
+		var paths []string
+		if json.Unmarshal([]byte(m[8:]), &paths) == nil {
+			dragOut(w, paths)
+		}
 	case strings.HasPrefix(m, "title:"):
 		t, _ := windows.UTF16PtrFromString(m[6:] + " — Files")
 		procSetWindowTextW.Call(w.hwnd, uintptr(unsafe.Pointer(t)))

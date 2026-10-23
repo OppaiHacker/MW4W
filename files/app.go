@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"context"
 	"crypto/subtle"
+	"database/sql"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -32,6 +33,7 @@ type App struct {
 	th         *thumbber
 	token      string
 	port       int
+	mport      int // media: /thumb and /raw
 	openWindow func(path string) // set by the UI host
 	quit       func()
 	packDir    string
@@ -47,13 +49,20 @@ func newApp(data string) (*App, error) {
 		return nil, err
 	}
 	a := &App{ix: ix, th: newThumbber(ix), chroma: chromaCSS(), quit: func() { os.Exit(0) }}
-	a.packDir = os.Getenv("MW4W_PACK")
-	if a.packDir == "" {
-		if exe, err := os.Executable(); err == nil {
-			a.packDir = filepath.Dir(filepath.Dir(exe)) // <pack>\bin\mw4w-files.exe
-		}
-	}
+	a.applyPrefs()
+	a.packDir = packDir()
 	return a, nil
+}
+
+// packDir: MW4W's pack folder (colors, settings).
+func packDir() string {
+	if d := os.Getenv("MW4W_PACK"); d != "" {
+		return d
+	}
+	if exe, err := os.Executable(); err == nil {
+		return filepath.Dir(filepath.Dir(exe)) // <pack>\bin\mw4w-files.exe
+	}
+	return ""
 }
 
 func (a *App) routes() http.Handler {
@@ -114,6 +123,9 @@ func (a *App) routes() http.Handler {
 	api("/api/trash", func(r *http.Request) (any, error) { return trashList(), nil })
 	api("/api/preview", func(r *http.Request) (any, error) { return a.preview(r.URL.Query().Get("p")) })
 	api("/api/op", a.apiOp)
+	api("/api/upload", a.apiUpload)
+	api("/api/convert", a.apiConvert)
+	api("/api/jobs", a.apiJobs)
 	api("/api/prefs", a.apiPrefs)
 	api("/api/index", a.apiIndex)
 	api("/api/ping", func(r *http.Request) (any, error) { return "ok", nil })
@@ -143,16 +155,22 @@ func (a *App) routes() http.Handler {
 //   - Origin, when sent, must be ours (no cross-site POSTs)
 //   - our page runs under a strict CSP: own scripts only, nothing loaded from outside
 func (a *App) guard(next http.Handler) http.Handler {
-	csp := "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; " +
-		"media-src 'self'; font-src 'self' data:; frame-src 'self'; object-src 'self'; connect-src 'self'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'"
+	origin := fmt.Sprintf("http://127.0.0.1:%d", a.port)
+	media := fmt.Sprintf("http://127.0.0.1:%d", a.mport)
+	csp := "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' " + media + " data: blob:; " +
+		"media-src 'self' " + media + "; font-src 'self' data:; frame-src 'self' " + media + "; object-src 'self'; connect-src 'self'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'"
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		origin := fmt.Sprintf("http://127.0.0.1:%d", a.port)
 		ip, _, _ := net.SplitHostPort(r.RemoteAddr)
 		if ip := net.ParseIP(ip); ip == nil || !ip.IsLoopback() {
 			http.Error(w, "forbidden", 403)
 			return
 		}
-		if r.Host != origin[len("http://"):] {
+		onMedia := r.Host == media[len("http://"):]
+		if r.Host != origin[len("http://"):] && !onMedia {
+			http.Error(w, "forbidden", 403)
+			return
+		}
+		if onMedia && r.URL.Path != "/thumb" && r.URL.Path != "/raw" {
 			http.Error(w, "forbidden", 403)
 			return
 		}
@@ -176,7 +194,13 @@ func (a *App) guard(next http.Handler) http.Handler {
 		h.Set("Content-Security-Policy", csp)
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Referrer-Policy", "no-referrer")
-		h.Set("Cross-Origin-Resource-Policy", "same-origin")
+		// the media port is another site to Chromium (IP hosts compare with the port); its token
+		// cookie is SameSite=Strict, so other sites still get 403
+		if onMedia {
+			h.Set("Cross-Origin-Resource-Policy", "cross-origin")
+		} else {
+			h.Set("Cross-Origin-Resource-Policy", "same-origin")
+		}
 		next.ServeHTTP(w, r)
 	})
 }
@@ -239,7 +263,7 @@ func (a *App) apiInit(r *http.Request) (any, error) {
 	return map[string]any{
 		"home": homeDir(), "sep": string(filepath.Separator), "version": version, "windows": caseInsensitive,
 		"known": known, "bookmarks": marks, "drives": drives(), "prefs": json.RawMessage(orEmpty(a.ix.meta("prefs"))),
-		"embedded": a.openWindow != nil,
+		"embedded": a.openWindow != nil, "media": fmt.Sprintf("http://127.0.0.1:%d", a.mport),
 	}, nil
 }
 
@@ -257,8 +281,16 @@ func (a *App) apiPrefs(r *http.Request) (any, error) {
 			return nil, errors.New("bad prefs")
 		}
 		a.ix.setMeta("prefs", string(b))
+		a.applyPrefs()
 	}
 	return json.RawMessage(orEmpty(a.ix.meta("prefs"))), nil
+}
+
+// applyPrefs: what the resident process does with the UI's settings (the donut's key).
+func (a *App) applyPrefs() {
+	var p struct{ Donut string }
+	json.Unmarshal([]byte(orEmpty(a.ix.meta("prefs"))), &p)
+	setDonutKey(p.Donut)
 }
 
 func (a *App) apiIndex(r *http.Request) (any, error) {
@@ -555,7 +587,7 @@ func (a *App) apiOp(r *http.Request) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		a.ix.w.Exec(`INSERT OR REPLACE INTO opened(path, ts) VALUES(?, ?)`, p, time.Now().Unix())
+		a.ix.later(func(tx *sql.Tx) { tx.Exec(`INSERT OR REPLACE INTO opened(path, ts) VALUES(?, ?)`, p, time.Now().Unix()) })
 		return nil, shellOpen(p)
 	case "openwith":
 		p, err := one()
@@ -683,6 +715,37 @@ func (a *App) apiOp(r *http.Request) (any, error) {
 		return compressZip(o.Paths, filepath.Join(o.Dest, o.Name))
 	}
 	return nil, fmt.Errorf("unknown op %q", o.Op)
+}
+
+// apiUpload saves a dropped file that has no path on disk (an image from a browser) into dest.
+func (a *App) apiUpload(r *http.Request) (any, error) {
+	if r.Method != "POST" {
+		return nil, errors.New("POST only")
+	}
+	q := r.URL.Query()
+	name, dest := q.Get("name"), q.Get("dest")
+	if err := validName(name); err != nil {
+		return nil, err
+	}
+	if fi, err := os.Stat(dest); err != nil {
+		return nil, err
+	} else if !fi.IsDir() {
+		return nil, errors.New("not a folder")
+	}
+	p := uniquePath(filepath.Join(dest, name))
+	f, err := os.OpenFile(p, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+	if err != nil {
+		return nil, err
+	}
+	_, err = io.Copy(f, r.Body)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		os.Remove(p) // never leave half a file
+		return nil, err
+	}
+	return map[string]string{"path": p}, nil
 }
 
 // clipboard: files copied in any app (Windows clipboard) win over our own list.

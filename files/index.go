@@ -297,6 +297,16 @@ func (ix *Index) sync(dir string, ents []entry) {
 	}
 }
 
+// later queues a write for the writer without waiting: a request never stalls behind a scan
+// (its queue is full while it indexes); a full queue hands it to a goroutine.
+func (ix *Index) later(f func(*sql.Tx)) {
+	select {
+	case ix.jobs <- f:
+	default:
+		go func() { ix.jobs <- f }()
+	}
+}
+
 func (ix *Index) underRoot(dir string) bool {
 	for _, r := range ix.cfg.Roots {
 		if under(dir, filepath.Clean(r)) {

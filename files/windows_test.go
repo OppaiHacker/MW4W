@@ -8,6 +8,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"net"
 	"net/http"
 	"os"
@@ -16,6 +17,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unsafe"
 )
 
 // one app + UI thread for the whole test binary (one UI thread per process)
@@ -270,4 +272,126 @@ func TestDrivesAndKnown(t *testing.T) {
 		t.Fatal("no known folders")
 	}
 	t.Logf("drives %+v roots %v", ds, defaultRoots())
+}
+
+// TestDragDataObject: what a drag out of Files carries is the files (CF_HDROP), from any folders.
+func TestDragDataObject(t *testing.T) {
+	a, b := t.TempDir(), t.TempDir()
+	want := []string{filepath.Join(a, "one.txt"), filepath.Join(b, "two words.txt"), b}
+	for _, p := range want[:2] {
+		os.WriteFile(p, []byte("x"), 0o644)
+	}
+	err := sta(func() error {
+		do, err := shellDataObject(want)
+		if err != nil {
+			return err
+		}
+		defer comRelease(do)
+		got := dataObjectFiles(do)
+		if len(got) != len(want) {
+			return fmt.Errorf("got %q, want %q", got, want)
+		}
+		for i := range want {
+			if !samePath(got[i], want[i]) {
+				return fmt.Errorf("got %q, want %q", got, want)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := shellDataObject([]string{filepath.Join(a, "missing")}); err == nil {
+		t.Fatal("a missing file should not drag")
+	}
+}
+
+// TestDonutDrop: the donut as a drop target (its COM interface called the way OLE does), with
+// Explorer's own data object for a real file: it offers the right formats, a drop on a slice
+// converts, the hole cancels. (The window shows for a moment.)
+func TestDonutDrop(t *testing.T) {
+	startDonut()
+	for i := 0; i < 100 && dropTarget == nil; i++ {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if dropTarget == nil {
+		t.Fatal("no donut window")
+	}
+	dir := t.TempDir()
+	src := testPicture(t, dir, 40, 30)
+	const x, y = 600, 500
+	pt := func(dx, dy float64) uintptr { return uintptr(uint32(int32(x+dx))) | uintptr(uint32(int32(y+dy)))<<32 }
+	at := func(i, n int) uintptr { // the middle of slice i
+		a := 2 * math.Pi * float64(i) / float64(n)
+		r := (dnOuter + dnInner) / 2 * dn.scale
+		return pt(r*math.Sin(a), -r*math.Cos(a))
+	}
+	// on the donut's thread, as OLE calls a drop target
+	call := func(f func()) {
+		procSendMessageW.Call(dn.hwnd, wmDnRun, uintptr(unsafe.Pointer(&f)), 0)
+	}
+	dt := uintptr(unsafe.Pointer(dropTarget))
+	var eff uint32
+	call(func() {
+		do, err := shellDataObject([]string{src})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer comRelease(do)
+		donutShow(x, y)
+		dn.down = true // the button is held while dragging
+		comCall(dt, 3, do, 0, pt(0, 0), uintptr(unsafe.Pointer(&eff))) // DragEnter in the hole
+		if dn.phase != dpShown || eff != 0 {
+			t.Fatalf("enter: phase %d, effect %d", dn.phase, eff)
+		}
+		s := donutSlices()
+		i := -1
+		for k, tg := range s {
+			if tg.ID == "jpg" {
+				i = k
+			}
+		}
+		if i < 0 {
+			t.Fatalf("no JPG slice for a PNG: %v", ids(s))
+		}
+		comCall(dt, 4, 0, at(i, len(s)), uintptr(unsafe.Pointer(&eff))) // DragOver the JPG slice
+		if dn.hover != i || eff != 1 {
+			t.Fatalf("over: hover %d (want %d), effect %d", dn.hover, i, eff)
+		}
+		comCall(dt, 6, do, 0, at(i, len(s)), uintptr(unsafe.Pointer(&eff))) // Drop
+		dn.down = false
+		if eff != 1 || dn.phase != dpBusy {
+			t.Fatalf("drop: effect %d, phase %d", eff, dn.phase)
+		}
+	})
+	waitFile := func(p string) {
+		for i := 0; i < 200; i++ {
+			if _, err := os.Stat(p); err == nil {
+				return
+			}
+			time.Sleep(25 * time.Millisecond)
+		}
+		t.Fatalf("no %s (jobs: %+v)", p, convJobs.snapshot())
+	}
+	waitFile(filepath.Join(dir, "pic.jpg"))
+	for i := 0; i < 200 && dn.phase != dpHidden; i++ {
+		time.Sleep(25 * time.Millisecond)
+	}
+	if dn.phase != dpHidden {
+		t.Fatal("the donut stays after the result")
+	}
+	// again, dropped in the hole: nothing happens, it goes away
+	call(func() {
+		do, _ := shellDataObject([]string{src})
+		defer comRelease(do)
+		donutShow(x, y)
+		comCall(dt, 3, do, 0, pt(0, 0), uintptr(unsafe.Pointer(&eff)))
+		comCall(dt, 6, do, 0, pt(2, 2), uintptr(unsafe.Pointer(&eff)))
+		if eff != 0 || dn.phase != dpHidden {
+			t.Fatalf("hole: effect %d, phase %d", eff, dn.phase)
+		}
+	})
+	if ents, _ := os.ReadDir(dir); len(ents) != 2 {
+		t.Fatalf("files: %d, want pic.png and pic.jpg", len(ents))
+	}
 }

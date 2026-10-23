@@ -69,9 +69,9 @@ func (t *thumbber) get(path string, px int) (string, []byte) {
 		c.mime, c.data = encodeThumb(img)
 		if c.data != nil {
 			mime, data := c.mime, c.data
-			t.db.jobs <- func(tx *sql.Tx) {
+			t.db.later(func(tx *sql.Tx) {
 				tx.Exec(`INSERT OR REPLACE INTO thumbs(key, mime, data, ts) VALUES(?,?,?,?)`, key, mime, data, time.Now().Unix())
-			}
+			})
 		}
 	}
 	t.mu.Lock()
